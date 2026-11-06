@@ -1,0 +1,19 @@
+# Top-level runtime dependencies. Pinned, fully-resolved versions live in requirements.txt.
+fastapi
+uvicorn[standard]
+pydantic
+pydantic-settings
+email-validator
+sqlalchemy[asyncio]
+asyncpg
+alembic
+pyjwt
+google-auth
+requests
+cryptography
+structlog
+sentry-sdk[fastapi]
+arq
+tzdata
+numpy
+scikit-learn

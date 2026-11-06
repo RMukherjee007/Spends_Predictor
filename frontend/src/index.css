@@ -1,0 +1,149 @@
+@import 'tailwindcss';
+
+/*
+ * Design tokens.
+ * Raw light/dark values live in custom properties so they can be reused (and mirrored into a
+ * future mobile app). Semantic tokens pick the right value via light-dark(), with a
+ * prefers-color-scheme fallback for browsers that lack light-dark().
+ */
+:root {
+  /* Raw palette */
+  --bg-light: oklch(98.5% 0.004 275);
+  --bg-dark: oklch(17% 0.012 275);
+  --surface-light: oklch(100% 0 0);
+  --surface-dark: oklch(21.5% 0.014 275);
+  --surface-muted-light: oklch(96% 0.006 275);
+  --surface-muted-dark: oklch(25% 0.016 275);
+  --text-light: oklch(22% 0.025 275);
+  --text-dark: oklch(95.5% 0.006 275);
+  --text-muted-light: oklch(46% 0.02 275);
+  --text-muted-dark: oklch(74% 0.015 275);
+  --border-light: oklch(91% 0.008 275);
+  --border-dark: oklch(31% 0.016 275);
+  /* Input/control borders meet 3:1 non-text contrast */
+  --border-strong-light: oklch(60% 0.015 275);
+  --border-strong-dark: oklch(58% 0.015 275);
+  --brand-light: oklch(50% 0.2 280);
+  --brand-dark: oklch(74% 0.14 280);
+  --brand-fg-light: oklch(100% 0 0);
+  --brand-fg-dark: oklch(18% 0.04 280);
+  --positive-light: oklch(50% 0.13 155);
+  --positive-dark: oklch(78% 0.14 155);
+  --negative-light: oklch(53% 0.19 25);
+  --negative-dark: oklch(74% 0.15 25);
+  --warning-light: oklch(56% 0.16 70);
+  --warning-dark: oklch(80% 0.15 75);
+
+  /* Semantic tokens: light defaults */
+  --bg: var(--bg-light);
+  --surface: var(--surface-light);
+  --surface-muted: var(--surface-muted-light);
+  --text: var(--text-light);
+  --text-muted: var(--text-muted-light);
+  --border: var(--border-light);
+  --border-strong: var(--border-strong-light);
+  --brand: var(--brand-light);
+  --brand-fg: var(--brand-fg-light);
+  --positive: var(--positive-light);
+  --negative: var(--negative-light);
+  --warning: var(--warning-light);
+
+  /* Fallback for browsers without light-dark() */
+  @media (prefers-color-scheme: dark) {
+    --bg: var(--bg-dark);
+    --surface: var(--surface-dark);
+    --surface-muted: var(--surface-muted-dark);
+    --text: var(--text-dark);
+    --text-muted: var(--text-muted-dark);
+    --border: var(--border-dark);
+    --border-strong: var(--border-strong-dark);
+    --brand: var(--brand-dark);
+    --brand-fg: var(--brand-fg-dark);
+    --positive: var(--positive-dark);
+    --negative: var(--negative-dark);
+    --warning: var(--warning-dark);
+  }
+
+  @supports (color: light-dark(white, black)) {
+    --bg: light-dark(var(--bg-light), var(--bg-dark));
+    --surface: light-dark(var(--surface-light), var(--surface-dark));
+    --surface-muted: light-dark(var(--surface-muted-light), var(--surface-muted-dark));
+    --text: light-dark(var(--text-light), var(--text-dark));
+    --text-muted: light-dark(var(--text-muted-light), var(--text-muted-dark));
+    --border: light-dark(var(--border-light), var(--border-dark));
+    --border-strong: light-dark(var(--border-strong-light), var(--border-strong-dark));
+    --brand: light-dark(var(--brand-light), var(--brand-dark));
+    --brand-fg: light-dark(var(--brand-fg-light), var(--brand-fg-dark));
+    --positive: light-dark(var(--positive-light), var(--positive-dark));
+    --negative: light-dark(var(--negative-light), var(--negative-dark));
+    --warning: light-dark(var(--warning-light), var(--warning-dark));
+  }
+
+  /* Adapt native UI (scrollbars, form controls, canvas) to the user's preference */
+  color-scheme: light dark;
+  accent-color: var(--brand);
+}
+
+/* Windows High Contrast / forced colors: map tokens to system colors */
+@media (forced-colors: active) {
+  :root {
+    --bg: Canvas;
+    --surface: Canvas;
+    --surface-muted: Canvas;
+    --text: CanvasText;
+    --text-muted: CanvasText;
+    --border: CanvasText;
+    --border-strong: CanvasText;
+    --brand: Highlight;
+    --brand-fg: HighlightText;
+    --positive: Highlight;
+    --negative: Mark;
+    --warning: Mark;
+  }
+}
+
+/* Expose tokens as Tailwind utilities: bg-surface, text-muted, border-strong, ... */
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-fg: var(--text);
+  --color-muted: var(--text-muted);
+  --color-line: var(--border);
+  --color-line-strong: var(--border-strong);
+  --color-brand: var(--brand);
+  --color-brand-fg: var(--brand-fg);
+  --color-positive: var(--positive);
+  --color-negative: var(--negative);
+  --color-danger: var(--negative);
+  --color-warning: var(--warning);
+
+  --font-sans:
+    'Inter', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue',
+    Arial, sans-serif;
+}
+
+@layer base {
+  html {
+    font-family: var(--font-sans);
+    background-color: var(--bg);
+    color: var(--text);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body {
+    min-height: 100dvh;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  /* Amounts line up in columns */
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+}

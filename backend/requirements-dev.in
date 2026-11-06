@@ -1,0 +1,9 @@
+# Development / CI dependencies (installed on top of requirements.txt).
+pytest
+pytest-asyncio
+pytest-cov
+httpx
+aiosqlite
+ruff
+mypy
+types-requests

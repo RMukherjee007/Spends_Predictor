@@ -1,0 +1,12 @@
+{
+  "name": "spends-predictor",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Spends Predictor monorepo (FastAPI + React)",
+  "scripts": {
+    "dev:frontend": "npm --prefix frontend run dev",
+    "build:frontend": "npm --prefix frontend run build",
+    "test:frontend": "npm --prefix frontend test",
+    "lint:frontend": "npm --prefix frontend run lint"
+  }
+}

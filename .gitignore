@@ -1,0 +1,40 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+backend/.venv/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+*.db
+*.sqlite3
+
+# Node / Frontend
+node_modules/
+frontend/dist/
+frontend/coverage/
+*.tsbuildinfo
+
+# Environment & secrets
+.env
+.env.*
+!.env.example
+backend/.env
+frontend/.env.local
+
+# Native C++ / Java compiled artifacts (built on demand)
+*.dylib
+*.so
+*.dll
+*.class
+
+# OS / IDE
+.DS_Store
+.idea/
+.vscode/

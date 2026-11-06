@@ -1,0 +1,74 @@
+# Render Blueprint (https://render.com/docs/blueprint-spec)
+# Deploys the entire stack on Render's free tier:
+# 1. PostgreSQL database
+# 2. Key-Value (Redis-compatible) instance
+# 3. FastAPI backend web service
+# 4. React static site with /api/* rewrite so auth cookies remain first-party
+
+databases:
+  - name: spends-predictor-db
+    databaseName: spends
+    user: spends
+    plan: free
+
+services:
+  - type: keyvalue
+    name: spends-predictor-redis
+    plan: free
+    ipAllowList: []
+
+  - type: web
+    name: spends-predictor-api
+    runtime: docker
+    rootDir: backend
+    plan: free
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DEFAULT_CURRENCY
+        value: INR
+      - key: COOKIE_SECURE
+        value: "true"
+      - key: DEV_LOGIN_ENABLED
+        value: "false"
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FIELD_ENCRYPTION_KEYS
+        sync: false # Set in Render dashboard using: python -m app.scripts.generate_key
+      - key: GOOGLE_CLIENT_IDS
+        sync: false # Set your Google OAuth Client ID(s) in Render dashboard
+      - key: SENTRY_DSN
+        sync: false
+      - key: DATABASE_URL
+        fromDatabase:
+          name: spends-predictor-db
+          property: connectionString
+      - key: REDIS_URL
+        fromService:
+          type: keyvalue
+          name: spends-predictor-redis
+          property: connectionString
+
+  - type: web
+    name: spends-predictor-web
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_ENVIRONMENT
+        value: production
+      - key: VITE_DEV_LOGIN
+        value: "false"
+      - key: VITE_GOOGLE_CLIENT_ID
+        sync: false
+      - key: VITE_SENTRY_DSN
+        sync: false
+    routes:
+      - type: rewrite
+        source: /api/*
+        destination: https://spends-predictor-api.onrender.com/api/*
+      - type: rewrite
+        source: /*
+        destination: /index.html
