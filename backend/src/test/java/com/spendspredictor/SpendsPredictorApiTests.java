@@ -358,4 +358,113 @@ class SpendsPredictorApiTests {
                 .header("Authorization", "Bearer " + otherToken))
             .andExpect(status().isUnauthorized());
     }
+
+    @Test
+    void quantCoreKernelAndThymeleafHtmxUiFlow() throws Exception {
+        // 1. Direct unit verification of in-JVM Java 21 QuantCoreKernel
+        double waldProb = QuantCoreKernel.waldFirstPassageProb(500_000.0, 100_000.0, -2_500.0, 1_200.0, 15.0);
+        assertThat(waldProb).isBetween(0.0, 1.0);
+
+        QuantCoreKernel.MonteCarloResult mc = QuantCoreKernel.runMonteCarloRunway(
+            500_000L,
+            100_000L,
+            new double[] {12_000.0, 15_000.0, 8_000.0, 22_000.0},
+            new double[] {0.0, 0.0, -50_000.0, 0.0, 0.0},
+            5,
+            2000,
+            20261027L
+        );
+        assertThat(mc.p10ByDay()).hasSize(6);
+        assertThat(mc.p10ByDay()[5]).isLessThanOrEqualTo(mc.p50ByDay()[5]);
+        assertThat(mc.p50ByDay()[5]).isLessThanOrEqualTo(mc.p90ByDay()[5]);
+        assertThat(mc.engine()).isEqualTo(QuantCoreKernel.ENGINE_NAME);
+
+        QuantCoreKernel.MinTResult mint = QuantCoreKernel.mintReconcile(
+            new double[] {100.0, 200.0, 300.0},
+            new double[] {10.0, 20.0, 30.0},
+            660.0,
+            15.0
+        );
+        assertThat(mint.totalReconciled()).isGreaterThan(600L);
+
+        double cusum = QuantCoreKernel.pageCusum(
+            new double[] {1000.0, 1100.0, 1500.0, 1800.0, 2200.0},
+            1000.0,
+            200.0,
+            0.5
+        );
+        assertThat(cusum).isGreaterThan(5.0);
+
+        // 2. Thymeleaf + HTMX Web UI Flow
+        // Unauthenticated GET / redirects to /login
+        mvc.perform(get("/"))
+            .andExpect(status().is3xxRedirection());
+
+        // GET /login renders Thymeleaf sign-in page
+        MvcResult loginPageRes = mvc.perform(get("/login"))
+            .andExpect(status().isOk())
+            .andReturn();
+        assertThat(loginPageRes.getResponse().getContentAsString()).contains("Sign in to Spends Predictor");
+
+        // POST /ui/login signs in and sets cookies
+        MvcResult uiLoginRes = mvc.perform(post("/ui/login")
+                .contentType(MediaType.APPLICATION_FORM_URLENCODED)
+                .param("email", "thymeleaf_ui@example.com")
+                .param("password", "UiPassword123!")
+                .param("full_name", "Raghav UI"))
+            .andExpect(status().is3xxRedirection())
+            .andReturn();
+
+        Cookie accessCookie = uiLoginRes.getResponse().getCookie("sp_access");
+        Cookie refreshCookie = uiLoginRes.getResponse().getCookie("sp_refresh");
+        Cookie csrfCookie = uiLoginRes.getResponse().getCookie("sp_csrf");
+        assertThat(accessCookie).isNotNull();
+
+        // GET / renders Dashboard (honest empty state before sync)
+        MvcResult dashEmptyRes = mvc.perform(get("/").cookie(accessCookie, refreshCookie, csrfCookie))
+            .andExpect(status().isOk())
+            .andReturn();
+        assertThat(dashEmptyRes.getResponse().getContentAsString())
+            .contains("Cashflow &amp; Spend Forecast")
+            .contains("No transactions in your ledger yet");
+
+        // POST /ui/accounts/sync populates sandbox accounts and transactions
+        mvc.perform(post("/ui/accounts/sync")
+                .cookie(accessCookie, refreshCookie, csrfCookie)
+                .param("redirect", "/accounts"))
+            .andExpect(status().is3xxRedirection());
+
+        // GET /accounts renders connected institutions and AES-256-GCM badge
+        MvcResult acctsUiRes = mvc.perform(get("/accounts").cookie(accessCookie, refreshCookie, csrfCookie))
+            .andExpect(status().isOk())
+            .andReturn();
+        assertThat(acctsUiRes.getResponse().getContentAsString())
+            .contains("AES-256-GCM")
+            .contains("Active Financial Institutions");
+
+        // GET /intelligence renders 7-Pillar ML Intelligence page with Java 21 QuantCore
+        MvcResult intelUiRes = mvc.perform(get("/intelligence").cookie(accessCookie, refreshCookie, csrfCookie))
+            .andExpect(status().isOk())
+            .andReturn();
+        assertThat(intelUiRes.getResponse().getContentAsString())
+            .contains("Java 21 In-JVM QuantCore")
+            .contains("Hierarchical Category Forecast (MinT Reconciled)");
+
+        // HTMX partial swap: GET /intelligence?tab=runway with HX-Request: true returns only the tab fragment
+        MvcResult htmxTabRes = mvc.perform(get("/intelligence?tab=runway")
+                .cookie(accessCookie, refreshCookie, csrfCookie)
+                .header("HX-Request", "true"))
+            .andExpect(status().isOk())
+            .andReturn();
+        String tabHtml = htmxTabRes.getResponse().getContentAsString();
+        assertThat(tabHtml)
+            .contains("30-Day Liquidity Runway Simulation")
+            .doesNotContain("<!DOCTYPE html>");
+
+        // GET /transactions renders Transactions Ledger
+        MvcResult txnsUiRes = mvc.perform(get("/transactions").cookie(accessCookie, refreshCookie, csrfCookie))
+            .andExpect(status().isOk())
+            .andReturn();
+        assertThat(txnsUiRes.getResponse().getContentAsString()).contains("Transactions Ledger");
+    }
 }

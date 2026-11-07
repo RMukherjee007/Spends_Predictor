@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('Connected Accounts')}"></head>
+<body class="min-h-dvh bg-bg text-fg flex flex-col md:flex-row">
+
+  <aside th:replace="~{fragments/layout :: sidebar('accounts', ${user})}"></aside>
+
+  <div class="flex-1 flex flex-col min-w-0">
+    <header th:replace="~{fragments/layout :: mobileHeader}"></header>
+
+    <main class="flex-1 mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 md:py-10 pb-24 md:pb-10">
+      <div class="space-y-8">
+        <!-- Header -->
+        <header class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p class="text-xs font-medium uppercase tracking-wider text-muted">
+              Banking &amp; Ledger Connections
+            </p>
+            <h1 class="font-semibold tracking-tight text-fg text-2xl sm:text-3xl">
+              Connected Accounts
+            </h1>
+          </div>
+
+          <div class="flex flex-wrap items-center gap-2.5">
+            <form th:action="@{/ui/accounts/sync}" method="post">
+              <input type="hidden" name="redirect" value="/accounts" />
+              <button
+                type="submit"
+                class="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-xs font-semibold text-brand-fg hover:opacity-90 transition cursor-pointer"
+              >
+                <span>Sync Sandbox Bank</span>
+              </button>
+            </form>
+          </div>
+        </header>
+
+        <!-- Status Alert -->
+        <div
+          th:if="${statusMessage != null}"
+          role="status"
+          aria-live="polite"
+          class="flex items-center gap-3 rounded-2xl border border-positive/30 bg-positive/10 text-positive p-4 text-sm"
+        >
+          <span th:text="${statusMessage}">Successfully synced accounts.</span>
+        </div>
+
+        <!-- Summary Cards -->
+        <section aria-label="Account Summary" class="@container">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <article class="rounded-2xl border border-line bg-surface p-5 space-y-1.5">
+              <div class="flex items-center justify-between text-xs text-muted">
+                <span th:text="'Liquid Assets (' + ${currency} + ')'">Liquid Assets (INR)</span>
+              </div>
+              <p class="text-2xl font-semibold tracking-tight tabular" th:text="${fmt.format(totalLiquidBaseMinor)}">
+                ₹0.00
+              </p>
+              <p class="text-xs text-muted" th:text="${liquidCount} + ' deposit & savings accounts'">0 accounts</p>
+            </article>
+
+            <article class="rounded-2xl border border-line bg-surface p-5 space-y-1.5">
+              <div class="flex items-center justify-between text-xs text-muted">
+                <span th:text="'Credit Card Balance (' + ${currency} + ')'">Credit Card Balance (INR)</span>
+              </div>
+              <p class="text-2xl font-semibold tracking-tight tabular" th:text="${fmt.format(totalCreditBaseMinor)}">
+                ₹0.00
+              </p>
+              <p class="text-xs text-muted" th:text="${creditCount} + ' active credit cards'">0 cards</p>
+            </article>
+
+            <article class="rounded-2xl border border-line bg-surface p-5 space-y-1.5">
+              <div class="flex items-center justify-between text-xs text-muted">
+                <span>Ledger Security &amp; Encryption</span>
+              </div>
+              <p class="text-2xl font-semibold tracking-tight">AES-256-GCM</p>
+              <p class="text-xs text-positive">Masked numbers encrypted at rest</p>
+            </article>
+          </div>
+        </section>
+
+        <!-- Accounts List -->
+        <section aria-labelledby="accounts-list-heading" class="space-y-4">
+          <div class="flex items-center justify-between">
+            <h2 id="accounts-list-heading" class="text-base font-semibold tracking-tight" th:text="'Active Financial Institutions (' + ${accounts.size()} + ')'">
+              Active Financial Institutions (0)
+            </h2>
+            <a
+              th:href="@{/transactions}"
+              class="inline-flex items-center gap-1 text-xs font-medium text-brand hover:underline"
+            >
+              <span>View all transactions &rarr;</span>
+            </a>
+          </div>
+
+          <div
+            th:if="${accounts.isEmpty()}"
+            class="rounded-2xl border border-line border-dashed bg-surface p-12 text-center space-y-3"
+          >
+            <div>
+              <p class="text-sm font-medium text-fg">No accounts linked yet</p>
+              <p class="text-xs text-muted max-w-sm mx-auto mt-1">
+                Link sandbox banking data to populate 6 months of realistic transaction history, recurring subscriptions, and ML cashflow forecasting.
+              </p>
+            </div>
+            <form th:action="@{/ui/accounts/sync}" method="post">
+              <input type="hidden" name="redirect" value="/accounts" />
+              <button
+                type="submit"
+                class="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2 text-xs font-semibold text-brand-fg cursor-pointer"
+              >
+                <span>Link Sandbox Accounts</span>
+              </button>
+            </form>
+          </div>
+
+          <div th:unless="${accounts.isEmpty()}" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            <article
+              th:each="acct : ${accounts}"
+              class="flex flex-col justify-between rounded-2xl border border-line bg-surface p-5 space-y-4 shadow-sm hover:border-line-strong transition"
+            >
+              <div class="space-y-3">
+                <div class="flex items-start justify-between">
+                  <div>
+                    <h3 class="text-sm font-semibold text-fg tracking-tight" th:text="${acct.name()}">Account Name</h3>
+                    <p class="text-xs text-muted" th:text="${acct.institution()}">Institution</p>
+                  </div>
+                  <span class="rounded-lg bg-surface-muted px-2 py-0.5 text-[11px] font-medium uppercase tracking-wider text-muted" th:text="${acct.currency()}">
+                    INR
+                  </span>
+                </div>
+
+                <div class="pt-2">
+                  <p class="text-xs text-muted">Current Balance</p>
+                  <p class="text-2xl font-bold tracking-tight text-fg tabular" th:text="${fmt.formatInCurrency(acct.balanceMinor(), acct.currency())}">
+                    ₹0.00
+                  </p>
+                  <p th:if="${acct.currency() != currency}" class="text-xs text-muted tabular" th:text="'≈ ' + ${fmt.format(acct.balanceBaseMinor())}">
+                    ≈ ₹0.00
+                  </p>
+                </div>
+              </div>
+
+              <div class="pt-3 border-t border-line flex items-center justify-between text-xs text-muted">
+                <span class="font-mono" th:text="${acct.maskedNumber() != null ? acct.maskedNumber() : '•••• —'}">•••• 4821</span>
+                <span th:text="${acct.accountType().toUpperCase()}">SAVINGS</span>
+              </div>
+            </article>
+          </div>
+        </section>
+
+        <!-- Integration Notes -->
+        <section class="rounded-2xl border border-line bg-surface-muted/40 p-6 space-y-3">
+          <h3 class="text-sm font-semibold tracking-tight">Open Banking &amp; Provider Architecture</h3>
+          <p class="text-xs text-muted leading-relaxed">
+            Spends Predictor abstracts bank connectors behind a strict interface (<code class="font-mono text-fg">BankConnector</code>). In development, the mock connector simulates Indian banking formats (HDFC, ICICI, SBI) and multi-currency accounts (Wise USD). In production, Account Aggregators (Setu, Finvu) or Plaid can be attached without altering ledger invariants.
+          </p>
+        </section>
+      </div>
+    </main>
+
+    <nav th:replace="~{fragments/layout :: mobileNav('accounts')}"></nav>
+  </div>
+
+</body>
+</html>

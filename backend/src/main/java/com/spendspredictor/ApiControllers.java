@@ -93,6 +93,7 @@ public class ApiControllers {
         Map<String, Object> checks = new LinkedHashMap<>();
         checks.put("database", dbOk ? "ok" : "error: database unreachable");
         checks.put("java_verifier", "ok (in-JVM BigDecimal DECIMAL128)");
+        checks.put("quantcore_kernel", "ok (" + QuantCoreKernel.ENGINE_NAME + ")");
         return ResponseEntity.status(dbOk ? 200 : 503).body(Map.of(
             "status", dbOk ? "ok" : "degraded",
             "version", "0.2.0",

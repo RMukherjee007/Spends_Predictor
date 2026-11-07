@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('Sign in')}"></head>
+<body class="min-h-dvh bg-bg text-fg flex flex-col justify-center px-4 py-8 sm:px-6">
+  <div class="mx-auto w-full max-w-md space-y-6">
+    <div class="rounded-2xl border border-line bg-surface p-6 sm:p-8 space-y-6">
+      <div class="flex items-center gap-3">
+        <div class="flex h-10 w-10 items-center justify-center rounded-xl bg-brand text-brand-fg font-bold text-sm">
+          SP
+        </div>
+        <div>
+          <h1 class="text-lg font-semibold tracking-tight">Sign in to Spends Predictor</h1>
+          <p class="text-xs text-muted">
+            Forecast your spending before the month runs out.
+          </p>
+        </div>
+      </div>
+
+      <div
+        th:if="${error != null}"
+        role="alert"
+        class="flex items-start gap-2.5 rounded-xl border border-negative px-3.5 py-2.5 text-sm text-negative"
+      >
+        <span th:text="${error}">Invalid email or password</span>
+      </div>
+
+      <form th:action="@{/ui/login}" method="post" class="space-y-4">
+        <div class="space-y-1.5">
+          <label for="email" class="block text-xs font-medium text-fg">
+            Email address
+          </label>
+          <input
+            id="email"
+            name="email"
+            type="email"
+            inputmode="email"
+            autocomplete="username"
+            spellcheck="false"
+            required
+            th:value="${email != null ? email : 'asha@example.com'}"
+            class="w-full rounded-xl border border-line-strong bg-bg px-3.5 py-2.5 text-sm text-fg placeholder:text-muted"
+            placeholder="you@example.com"
+          />
+        </div>
+
+        <div class="space-y-1.5">
+          <label for="password" class="block text-xs font-medium text-fg">
+            Password
+          </label>
+          <input
+            id="password"
+            name="password"
+            type="password"
+            autocomplete="current-password"
+            required
+            minlength="6"
+            value="password123"
+            class="w-full rounded-xl border border-line-strong bg-bg px-3.5 py-2.5 text-sm text-fg placeholder:text-muted"
+            placeholder="Minimum 6 characters"
+          />
+        </div>
+
+        <div class="space-y-1.5">
+          <label for="full-name" class="block text-xs font-medium text-fg">
+            Full name <span class="text-muted font-normal">(optional, used on first sign-in)</span>
+          </label>
+          <input
+            id="full-name"
+            name="full_name"
+            type="text"
+            autocomplete="name"
+            th:value="${fullName != null ? fullName : 'Asha Rao'}"
+            class="w-full rounded-xl border border-line-strong bg-bg px-3.5 py-2.5 text-sm text-fg placeholder:text-muted"
+            placeholder="Asha Rao"
+          />
+        </div>
+
+        <button
+          type="submit"
+          class="w-full rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-brand-fg transition-opacity hover:opacity-95 cursor-pointer"
+        >
+          Sign in
+        </button>
+      </form>
+    </div>
+
+    <div class="rounded-2xl border border-line bg-surface px-5 py-4 flex items-center gap-3 text-xs text-muted">
+      <span class="text-positive font-bold">&#10003;</span>
+      <span>
+        AES-256-GCM encrypted at rest &middot; Multi-currency (ISO-4217) &middot; SHA-256 ledger verification
+      </span>
+    </div>
+  </div>
+</body>
+</html>

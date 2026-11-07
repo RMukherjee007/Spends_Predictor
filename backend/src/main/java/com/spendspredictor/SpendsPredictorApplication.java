@@ -134,10 +134,18 @@ public class SpendsPredictorApplication {
             response.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
             response.setHeader("Permissions-Policy", "camera=(), microphone=(), geolocation=(), payment=()");
             response.setHeader("Cross-Origin-Opener-Policy", "same-origin");
-            response.setHeader(
-                "Content-Security-Policy",
-                "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
-            );
+            String uri = request.getRequestURI();
+            if (uri != null && uri.startsWith("/api/")) {
+                response.setHeader(
+                    "Content-Security-Policy",
+                    "default-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'none'"
+                );
+            } else {
+                response.setHeader(
+                    "Content-Security-Policy",
+                    "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+                );
+            }
             if (settings.cookieSecure) {
                 response.setHeader("Strict-Transport-Security", "max-age=63072000; includeSubDomains");
             }

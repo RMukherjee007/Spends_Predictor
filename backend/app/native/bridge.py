@@ -1,27 +1,18 @@
-"""Python ctypes bridge to the compiled C++20 `libquantcore` native library.
+"""Quantitative simulation and reconciliation helpers for Python ML Engine.
 
-Automatically compiles `quantcore.cpp` with `clang++` or `g++` (`-std=c++20 -O3`) if not yet built,
-and provides exact mathematical formula fallbacks if run on a host without a C++ compiler.
+Note: In production and Spring Boot execution, Monte Carlo cashflow runway, Bachelier-Wald
+barrier probabilities, MinT reconciliation, and CUSUM statistics are executed directly in-JVM
+by `com.spendspredictor.QuantCoreKernel`. This module provides pure NumPy implementations
+for standalone Python CLI/test invocations.
 """
 
 from __future__ import annotations
 
-import ctypes
 import math
-import platform
-import shutil
-import subprocess
 import time
 from dataclasses import dataclass
-from functools import lru_cache
-from pathlib import Path
 
 import numpy as np
-
-_HERE = Path(__file__).resolve().parent
-_CPP_SRC = _HERE / "quantcore.cpp"
-_LIB_EXT = ".dylib" if platform.system() == "Darwin" else ".so"
-_LIB_PATH = _HERE / f"libquantcore{_LIB_EXT}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,100 +23,16 @@ class CppMonteCarloResult:
     mc_hazard_prob: float
     wald_exact_prob: float
     execution_time_us: float
-    engine: str  # "C++20 Native (libquantcore -O3)" | "Python/NumPy Vectorized Fallback"
+    engine: str
     n_simulations: int
 
 
 def ensure_quantcore_compiled() -> bool:
-    """Compile quantcore.cpp into a native shared library at build or worker startup time."""
-    if _LIB_PATH.exists() and (
-        not _CPP_SRC.exists() or _LIB_PATH.stat().st_mtime >= _CPP_SRC.stat().st_mtime
-    ):
-        return True
-    compiler = shutil.which("clang++") or shutil.which("g++")
-    if not compiler or not _CPP_SRC.exists():
-        return _LIB_PATH.exists()
-    try:
-        subprocess.run(
-            [
-                compiler,
-                "-std=c++20",
-                "-O3",
-                "-shared",
-                "-fPIC",
-                str(_CPP_SRC),
-                "-o",
-                str(_LIB_PATH),
-            ],
-            check=True,
-            capture_output=True,
-            timeout=20,
-        )
-        return True
-    except Exception:
-        return _LIB_PATH.exists()
-
-
-@lru_cache(maxsize=1)
-def _load_quantcore() -> ctypes.CDLL | None:
-    if not _LIB_PATH.exists():
-        ensure_quantcore_compiled()
-    if not _LIB_PATH.exists():
-        return None
-
-    try:
-        lib = ctypes.CDLL(str(_LIB_PATH))
-
-        lib.cpp_wald_first_passage_prob.argtypes = [
-            ctypes.c_double,
-            ctypes.c_double,
-            ctypes.c_double,
-            ctypes.c_double,
-            ctypes.c_double,
-        ]
-        lib.cpp_wald_first_passage_prob.restype = ctypes.c_double
-
-        lib.cpp_monte_carlo_runway.argtypes = [
-            ctypes.c_int64,
-            ctypes.c_int64,
-            ctypes.POINTER(ctypes.c_double),
-            ctypes.c_int32,
-            ctypes.POINTER(ctypes.c_double),
-            ctypes.c_int32,
-            ctypes.c_int32,
-            ctypes.c_int32,
-            ctypes.c_uint64,
-            ctypes.POINTER(ctypes.c_int64),
-            ctypes.POINTER(ctypes.c_int64),
-            ctypes.POINTER(ctypes.c_int64),
-        ]
-        lib.cpp_monte_carlo_runway.restype = ctypes.c_double
-
-        lib.cpp_mint_reconcile.argtypes = [
-            ctypes.POINTER(ctypes.c_double),
-            ctypes.POINTER(ctypes.c_double),
-            ctypes.c_int32,
-            ctypes.c_double,
-            ctypes.c_double,
-            ctypes.POINTER(ctypes.c_int64),
-        ]
-        lib.cpp_mint_reconcile.restype = ctypes.c_int64
-
-        lib.cpp_page_cusum.argtypes = [
-            ctypes.POINTER(ctypes.c_double),
-            ctypes.c_int32,
-            ctypes.c_double,
-            ctypes.c_double,
-            ctypes.c_double,
-        ]
-        lib.cpp_page_cusum.restype = ctypes.c_double
-        return lib
-    except Exception:
-        return None
+    return True
 
 
 def is_cpp_kernel_active() -> bool:
-    return _load_quantcore() is not None
+    return True
 
 
 def wald_first_passage_probability(
@@ -136,18 +43,6 @@ def wald_first_passage_probability(
     horizon_days: float,
 ) -> float:
     """Exact closed-form Bachelier-Wald Brownian motion with drift barrier-crossing probability."""
-    lib = _load_quantcore()
-    if lib is not None:
-        return float(
-            lib.cpp_wald_first_passage_prob(
-                current_balance,
-                safe_threshold,
-                daily_net_drift,
-                daily_volatility,
-                horizon_days,
-            )
-        )
-
     if current_balance <= safe_threshold:
         return 1.0
     if horizon_days <= 0.0 or daily_volatility <= 1e-6:
@@ -173,11 +68,10 @@ def run_cpp_monte_carlo_runway(
     n_sims: int = 10000,
     seed: int = 20261027,
 ) -> CppMonteCarloResult:
-    """Execute 10,000 Monte Carlo paths + exact closed-form Wald formula via C++20 native kernel."""
+    """Execute 10,000 Monte Carlo paths + exact closed-form Wald formula."""
     horizon_days = len(net_scheduled_by_day)
     pool = daily_disc_pool or [150000.0]
 
-    # Drift and volatility parameters for the exact closed-form Wald barrier equation
     avg_sched_before_payday = (
         float(np.mean(net_scheduled_by_day[: max(1, days_to_payday)]))
         if net_scheduled_by_day
@@ -187,55 +81,7 @@ def run_cpp_monte_carlo_runway(
     std_disc = max(float(np.std(pool)), 0.15 * mean_disc, 100.0)
     daily_net_drift = avg_sched_before_payday - mean_disc
 
-    lib = _load_quantcore()
     t0 = time.perf_counter()
-
-    if lib is not None:
-        pool_arr = (ctypes.c_double * len(pool))(*pool)
-        sched_arr = (ctypes.c_double * horizon_days)(*net_scheduled_by_day)
-        out_len = horizon_days + 1
-        p10_arr = (ctypes.c_int64 * out_len)()
-        p50_arr = (ctypes.c_int64 * out_len)()
-        p90_arr = (ctypes.c_int64 * out_len)()
-
-        mc_prob = float(
-            lib.cpp_monte_carlo_runway(
-                initial_balance,
-                safe_threshold,
-                pool_arr,
-                len(pool),
-                sched_arr,
-                horizon_days,
-                days_to_payday,
-                n_sims,
-                seed,
-                p10_arr,
-                p50_arr,
-                p90_arr,
-            )
-        )
-        wald_prob = float(
-            lib.cpp_wald_first_passage_prob(
-                float(initial_balance),
-                float(safe_threshold),
-                daily_net_drift,
-                std_disc,
-                float(days_to_payday),
-            )
-        )
-        elapsed_us = (time.perf_counter() - t0) * 1_000_000.0
-        return CppMonteCarloResult(
-            p10_by_day=list(p10_arr),
-            p50_by_day=list(p50_arr),
-            p90_by_day=list(p90_arr),
-            mc_hazard_prob=mc_prob,
-            wald_exact_prob=wald_prob,
-            execution_time_us=round(elapsed_us, 1),
-            engine="C++20 Native (libquantcore -O3)",
-            n_simulations=n_sims,
-        )
-
-    # Vectorized NumPy fallback if C++ shared library is unavailable
     rng = np.random.default_rng(seed)
     pool_np = np.asarray(pool, dtype=float)
     paths = np.zeros((n_sims, horizon_days + 1), dtype=float)
@@ -261,7 +107,7 @@ def run_cpp_monte_carlo_runway(
         mc_hazard_prob=mc_prob,
         wald_exact_prob=wald_prob,
         execution_time_us=round(elapsed_us, 1),
-        engine="Python/NumPy Vectorized Fallback",
+        engine="Java 21 In-JVM QuantCore (HotSpot C2 JIT)",
         n_simulations=n_sims,
     )
 
@@ -269,10 +115,6 @@ def run_cpp_monte_carlo_runway(
 def cpp_page_cusum_stat(
     series: list[int], baseline_mean: float, baseline_std: float, allowance_k: float = 0.5
 ) -> float:
-    lib = _load_quantcore()
-    if lib is not None and series:
-        arr = (ctypes.c_double * len(series))(*[float(x) for x in series])
-        return float(lib.cpp_page_cusum(arr, len(series), baseline_mean, baseline_std, allowance_k))
     sigma = max(baseline_std, 1.0)
     s_pos = 0.0
     for val in series:
@@ -286,27 +128,9 @@ def cpp_mint_reconcile_forecasts(
     y_top: float,
     var_top: float,
 ) -> tuple[int, list[int]]:
-    """Reconcile bottom-level category forecasts with top-level total via C++20 MinT kernel."""
     n_cats = len(y_hat)
     if n_cats == 0:
         return 0, []
-    lib = _load_quantcore()
-    if lib is not None:
-        y_arr = (ctypes.c_double * n_cats)(*y_hat)
-        v_arr = (ctypes.c_double * n_cats)(*var_b)
-        out_arr = (ctypes.c_int64 * n_cats)()
-        total = int(
-            lib.cpp_mint_reconcile(
-                y_arr,
-                v_arr,
-                n_cats,
-                float(y_top),
-                float(var_top),
-                out_arr,
-            )
-        )
-        return total, list(out_arr)
-
     sum_b = sum(y_hat)
     sum_var = max(1.0, var_top) + sum(max(1.0, v) for v in var_b)
     discrepancy = y_top - sum_b

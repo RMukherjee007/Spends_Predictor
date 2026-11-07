@@ -6,8 +6,8 @@ on:
   pull_request:
 
 jobs:
-  backend:
-    name: Backend (Java Spring Boot 3 Maven + Python ML & C++20)
+  fullstack:
+    name: Full-Stack Java 21 Spring Boot (Thymeleaf + HTMX + QuantCore) & Python ML
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -51,48 +51,13 @@ jobs:
           .venv/bin/ruff format --check app tests
           .venv/bin/mypy app tests
 
-      - name: Run Python ML & C++20 kernel tests
+      - name: Run Python ML engine unit tests
         run: .venv/bin/pytest -v
 
-      - name: Run Java Spring Boot 3 integration test suite against Postgres
+      - name: Run Java 21 Spring Boot full-stack test suite (REST API, Thymeleaf+HTMX UI, QuantCore, Ledger Audit)
         env:
           SPRING_DATASOURCE_URL: jdbc:postgresql://localhost:5432/spends_test
           SPRING_DATASOURCE_USERNAME: spends
           SPRING_DATASOURCE_PASSWORD: spends
           SPRING_DATASOURCE_DRIVER_CLASS_NAME: org.postgresql.Driver
         run: mvn -B test
-
-  frontend:
-    name: Frontend (ESLint, TypeScript, Vitest, Build)
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
-    steps:
-      - uses: actions/checkout@v4
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Verify generated OpenAPI TypeScript types
-        run: |
-          npm run gen:api
-          git diff --exit-code src/api/schema.d.ts
-
-      - name: Lint
-        run: npm run lint
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Unit tests
-        run: npm test -- --run
-
-      - name: Production build
-        run: npm run build

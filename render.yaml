@@ -1,8 +1,7 @@
 # Render Blueprint (https://render.com/docs/blueprint-spec)
-# Deploys the entire stack on Render's free tier:
-# 1. PostgreSQL database (also backs distributed rate limiting & token revocation)
-# 2. Java 21+ Spring Boot 3 + Python ML + C++20 backend web service
-# 3. React static site with /api/* rewrite so auth cookies remain first-party
+# Deploys the unified full-stack Spends Predictor application:
+# 1. PostgreSQL database
+# 2. Java 21+ Spring Boot 3 (Thymeleaf + HTMX Web UI + In-JVM QuantCore & Ledger Verifier + Python ML Engine)
 
 databases:
   - name: spends-predictor-db
@@ -12,7 +11,7 @@ databases:
 
 services:
   - type: web
-    name: spends-predictor-api
+    name: spends-predictor
     runtime: docker
     rootDir: backend
     plan: free
@@ -30,30 +29,7 @@ services:
         generateValue: true
       - key: FIELD_ENCRYPTION_KEYS
         sync: false
-      - key: GOOGLE_CLIENT_IDS
-        sync: false
       - key: SPRING_DATASOURCE_URL
         fromDatabase:
           name: spends-predictor-db
           property: connectionString
-
-  - type: web
-    name: spends-predictor-web
-    runtime: static
-    rootDir: frontend
-    buildCommand: npm ci && npm run build
-    staticPublishPath: dist
-    envVars:
-      - key: VITE_ENVIRONMENT
-        value: production
-      - key: VITE_DEV_LOGIN
-        value: "false"
-      - key: VITE_GOOGLE_CLIENT_ID
-        sync: false
-    routes:
-      - type: rewrite
-        source: /api/*
-        destination: https://spends-predictor-api.onrender.com/api/*
-      - type: rewrite
-        source: /*
-        destination: /index.html

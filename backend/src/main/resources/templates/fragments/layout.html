@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:fragment="head(title)">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title th:text="${title} + ' · Spends Predictor'">Spends Predictor</title>
+  <link rel="stylesheet" th:href="@{/css/app.css}" />
+  <script th:src="@{/js/app.js}" defer></script>
+</head>
+<body>
+
+  <!-- Desktop Sidebar Fragment -->
+  <aside
+    th:fragment="sidebar(activePage, user)"
+    aria-label="Primary navigation"
+    class="hidden md:flex md:w-64 md:flex-col md:justify-between border-r border-line bg-surface px-5 py-6"
+  >
+    <div class="space-y-8">
+      <div class="flex items-center gap-3 px-2">
+        <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-brand text-brand-fg font-bold text-sm">
+          SP
+        </div>
+        <div>
+          <p class="text-sm font-semibold tracking-tight">Spends Predictor</p>
+          <p class="text-xs text-muted">Smart cashflow · Java 21</p>
+        </div>
+      </div>
+
+      <nav class="space-y-1">
+        <a
+          th:href="@{/}"
+          th:class="${activePage == 'dashboard'} ? 'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors bg-surface-muted text-fg' : 'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors text-muted hover:bg-surface-muted/60 hover:text-fg'"
+        >
+          <span>Overview</span>
+        </a>
+        <a
+          th:href="@{/transactions}"
+          th:class="${activePage == 'transactions'} ? 'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors bg-surface-muted text-fg' : 'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors text-muted hover:bg-surface-muted/60 hover:text-fg'"
+        >
+          <span>Transactions</span>
+        </a>
+        <a
+          th:href="@{/intelligence}"
+          th:class="${activePage == 'intelligence'} ? 'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors bg-surface-muted text-fg' : 'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors text-muted hover:bg-surface-muted/60 hover:text-fg'"
+        >
+          <span>ML Intelligence</span>
+        </a>
+        <a
+          th:href="@{/accounts}"
+          th:class="${activePage == 'accounts'} ? 'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors bg-surface-muted text-fg' : 'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors text-muted hover:bg-surface-muted/60 hover:text-fg'"
+        >
+          <span>Accounts</span>
+        </a>
+        <a
+          th:href="@{/settings}"
+          th:class="${activePage == 'settings'} ? 'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors bg-surface-muted text-fg' : 'flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium transition-colors text-muted hover:bg-surface-muted/60 hover:text-fg'"
+        >
+          <span>Settings</span>
+        </a>
+      </nav>
+    </div>
+
+    <div class="border-t border-line pt-4 space-y-3">
+      <div th:if="${user != null}" class="px-2">
+        <p class="truncate text-sm font-medium" th:text="${user.fullName() != null ? user.fullName() : user.email()}">Asha Rao</p>
+        <p class="truncate text-xs text-muted" th:text="${user.email() + ' · ' + user.baseCurrency()}">asha@example.com · INR</p>
+      </div>
+      <form th:action="@{/ui/logout}" method="post">
+        <button
+          type="submit"
+          class="flex w-full items-center gap-2.5 rounded-xl px-3 py-2 text-sm font-medium text-muted hover:bg-surface-muted hover:text-fg transition-colors cursor-pointer"
+        >
+          <span>Sign out</span>
+        </button>
+      </form>
+    </div>
+  </aside>
+
+  <!-- Mobile Top Header Fragment -->
+  <header
+    th:fragment="mobileHeader"
+    class="flex md:hidden items-center justify-between border-b border-line bg-surface px-4 py-3"
+  >
+    <div class="flex items-center gap-2.5">
+      <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-brand text-brand-fg font-bold text-xs">
+        SP
+      </div>
+      <span class="text-sm font-semibold tracking-tight">Spends Predictor</span>
+    </div>
+    <form th:action="@{/ui/logout}" method="post">
+      <button
+        type="submit"
+        class="inline-flex items-center gap-1.5 rounded-lg border border-line-strong px-2.5 py-1.5 text-xs font-medium text-fg"
+      >
+        <span>Sign out</span>
+      </button>
+    </form>
+  </header>
+
+  <!-- Mobile Bottom Navigation Fragment -->
+  <nav
+    th:fragment="mobileNav(activePage)"
+    aria-label="Mobile navigation"
+    class="fixed bottom-0 inset-x-0 md:hidden border-t border-line bg-surface/95 backdrop-blur px-4 py-2 flex justify-around"
+  >
+    <a
+      th:href="@{/}"
+      th:class="${activePage == 'dashboard'} ? 'flex flex-col items-center gap-1 rounded-lg px-3 py-1 text-xs font-medium text-brand' : 'flex flex-col items-center gap-1 rounded-lg px-3 py-1 text-xs font-medium text-muted'"
+    >
+      <span>Overview</span>
+    </a>
+    <a
+      th:href="@{/transactions}"
+      th:class="${activePage == 'transactions'} ? 'flex flex-col items-center gap-1 rounded-lg px-3 py-1 text-xs font-medium text-brand' : 'flex flex-col items-center gap-1 rounded-lg px-3 py-1 text-xs font-medium text-muted'"
+    >
+      <span>Transactions</span>
+    </a>
+    <a
+      th:href="@{/intelligence}"
+      th:class="${activePage == 'intelligence'} ? 'flex flex-col items-center gap-1 rounded-lg px-3 py-1 text-xs font-medium text-brand' : 'flex flex-col items-center gap-1 rounded-lg px-3 py-1 text-xs font-medium text-muted'"
+    >
+      <span>Intelligence</span>
+    </a>
+    <a
+      th:href="@{/accounts}"
+      th:class="${activePage == 'accounts'} ? 'flex flex-col items-center gap-1 rounded-lg px-3 py-1 text-xs font-medium text-brand' : 'flex flex-col items-center gap-1 rounded-lg px-3 py-1 text-xs font-medium text-muted'"
+    >
+      <span>Accounts</span>
+    </a>
+    <a
+      th:href="@{/settings}"
+      th:class="${activePage == 'settings'} ? 'flex flex-col items-center gap-1 rounded-lg px-3 py-1 text-xs font-medium text-brand' : 'flex flex-col items-center gap-1 rounded-lg px-3 py-1 text-xs font-medium text-muted'"
+    >
+      <span>Settings</span>
+    </a>
+  </nav>
+
+</body>
+</html>

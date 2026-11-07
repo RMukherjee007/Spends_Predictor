@@ -1,66 +1,49 @@
 # Spends Predictor
 
-Production-grade polyglot personal & commercial spend forecasting platform. Built web-first with a versioned, mobile-ready REST API (`/api/v1`) powered by **Java 21+ (Spring Boot 3)**, a **Python `scikit-learn` ML engine**, a **C++20 `-O3` native quantitative kernel (`libquantcore`)**, and a **React 19 + TypeScript** frontend.
+Production-grade full-stack personal & commercial spend forecasting platform powered by **Java 21+ (Spring Boot 3.2)**, **Thymeleaf + HTMX** server-rendered hypermedia UI, an in-JVM **Java 21 `QuantCoreKernel`** (Monte Carlo liquidity runway & Bachelier-Wald barrier equations), an in-JVM **`LedgerSecurityVerifier`** (`DECIMAL128` + `SHA-256` tamper-evident audit seal), and a persistent **Python `scikit-learn` ML worker**.
 
 ---
 
 ## Architecture Highlights
 
-- **Primary Backend API (`backend/src/main/java/com/spendspredictor/`)**:
-  - **Java 21+ & Spring Boot 3.2**: Serves all `/api/v1/*` REST endpoints (`health`, `auth`, `users`, `accounts`, `transactions`, `insights`), request-ID & CSP/HSTS security headers filter, sliding-window rate limiting, and JDBC persistence (PostgreSQL in production, zero-config embedded PostgreSQL-compatibility mode locally).
-  - **In-JVM `LedgerSecurityVerifier`**: Executes directly inside the Spring Boot JVM using `java.math.BigDecimal` (`MathContext.DECIMAL128`, 34 decimal digits, `RoundingMode.HALF_EVEN` banker's rounding) and builds a cumulative `SHA-256` Merkle-style hash-chain seal over every transaction record.
-- **Dual-Mode Auth & Field Encryption**:
-  - **Web client**: `httpOnly` access + rotating refresh cookies (`sp_access`, `sp_refresh`) + double-submit CSRF cookie/header (`sp_csrf` / `X-CSRF-Token`).
-  - **Mobile/Bearer client**: `Authorization: Bearer` access tokens + rotating refresh tokens with token-family reuse/theft detection.
-  - **Application-Level Encryption**: Multi-key `AES-CBC-PKCS5Padding` + `HMAC-SHA256` encryption at rest for sensitive account fields.
-- **Multi-Currency Money Engine**: 18+ active ISO-4217 currencies with exact minor-unit exponents (`0` for `JPY`, `2` for `INR`/`USD`, `3` for `KWD`). Money is stored strictly in 64-bit integer minor units (paise/cents), never floats.
-- **7-Pillar ML & C++20 Quantitative Engine (`backend/app/`)**:
-  - **Python `scikit-learn` (`ml_engine.py`, `categorizer.py`, `ml_cli.py`)**: Ridge / Huber / GradientBoosting / Holt-Winters walk-forward forecasting, TF-IDF + LogisticRegression + Active Learning categorization, IsolationForest + MAD anomaly detection, K-Means + PCA behavioral personas, and exact linear SHAP attributions.
-  - **C++20 Native Kernel (`native/quantcore.cpp`)**: Compiled with `-std=c++20 -O3` for 10,000-path Xorshift64* Monte Carlo liquidity runway simulations, closed-form Bachelier-Wald Brownian barrier-crossing probabilities, Page's CUSUM drift statistics, and Wickramasuriya MinT variance-weighted hierarchical forecast reconciliation.
-- **Frontend (`frontend/`)**: React 19 + TypeScript + Vite + Tailwind CSS v4, end-to-end typed OpenAPI client (`openapi-typescript` + `openapi-fetch`), automatic light/dark mode, and interactive SVG quantitative charts.
+- **Full-Stack Java 21 & Spring Boot 3.2 (`backend/src/main/java/com/spendspredictor/`)**:
+  - **Web UI (`WebUiController.java` + `src/main/resources/templates/`)**: Server-rendered **Thymeleaf + HTMX** interface styled with Tailwind CSS (`src/main/resources/static/css/app.css`). Eliminates Node.js, `npm`, and Vite completely — the entire web application and REST API package into a single executable `.jar`.
+  - **REST API (`ApiControllers.java`)**: Serves all `/api/v1/*` endpoints (`health`, `auth`, `users`, `accounts`, `transactions`, `insights`), request-ID & CSP/HSTS security headers filter, proxy-aware rate limiting, and JDBC persistence with versioned schema migrations (`schema_migrations`) and composite indexes.
+  - **In-JVM `QuantCoreKernel.java`**: Replaces external C++ shared libraries with zero-allocation primitive loops compiled by the HotSpot C2 JIT compiler for 10,000-path SplitMix64 Monte Carlo liquidity runway simulations, closed-form Bachelier-Wald Brownian motion barrier-crossing probabilities, Page's CUSUM drift statistics, and Minimum Trace (MinT) hierarchical forecast reconciliation.
+  - **In-JVM `LedgerSecurityVerifier.java`**: Executes directly inside the JVM using `java.math.BigDecimal` (`MathContext.DECIMAL128`, 34 decimal digits, `RoundingMode.HALF_EVEN` banker's rounding) and verifies a persisted `SHA-256` root over every transaction record to detect out-of-band SQL tampering.
+- **Security & Field Encryption (`SecurityService.java`)**:
+  - **Authentication**: Database-indexed Email + Password authentication (`PBKDF2WithHmacSHA256`, 65,536 iterations, constant-time verification).
+  - **Session Lifecycle**: `httpOnly` access + atomic rotating refresh cookies (`sp_access`, `sp_refresh`) with token-family reuse detection and double-submit CSRF protection (`sp_csrf` / `X-CSRF-Token`).
+  - **Encryption at Rest**: `PBKDF2-HMAC-SHA256` + `AES-256-GCM` (`enc2:`) authenticated field encryption for sensitive account identifiers.
+- **Multi-Currency Money Engine**: ISO-4217 currencies with exact minor-unit exponents (`0` for `JPY`, `2` for `INR`/`USD`, `3` for `KWD`). Money is stored strictly in 64-bit integer minor units (paise/cents/fils), never floats.
+- **Persistent 7-Pillar Python ML Worker (`backend/app/`)**:
+  - Pre-warmed background daemon (`python -m app.ml_cli worker`) managed by Spring Boot for decomposed quantile regression forecasting, TF-IDF + LogisticRegression active-learning categorization, IsolationForest + MAD anomaly detection, K-Means + PCA behavioral personas, and linear SHAP attributions.
 
 ---
 
-## Quickstart (No External Keys or Docker Required)
-
-### 1. Start the Java Spring Boot 3 Backend API
+## Quickstart
 
 ```bash
 cd backend
 mvn spring-boot:run
 ```
 
-- Health check: `http://localhost:8000/api/v1/health`
-- Readiness check (DB + C++20 kernel + JVM BigDecimal verifier): `http://localhost:8000/api/v1/health/ready`
-
-### 2. Start the Frontend Web App
-
-```bash
-cd frontend
-cp .env.example .env.local
-npm run dev
-```
-
-Open `http://localhost:5173` and click **Sign in** to log in immediately with the local development account, sync sample Indian & international transactions, upload CSV bank statements, or run what-if Monte Carlo runway simulations.
+Open `http://localhost:8000` in your browser:
+- **Web UI**: `http://localhost:8000` (Sign in, sync sandbox accounts, inspect the 7-Pillar ML Intelligence tabs via HTMX, or import CSV bank statements)
+- **Liveness check**: `http://localhost:8000/api/v1/health`
+- **Readiness check**: `http://localhost:8000/api/v1/health/ready`
 
 ---
 
 ## Quality Checks & Tests
 
 ```bash
-# 1. Java Spring Boot 3 API Integration Tests (MockMvc + H2 PostgreSQL mode + Python ML + C++20)
+# 1. Java 21 Spring Boot Full-Stack Tests (REST API + Thymeleaf/HTMX UI + QuantCoreKernel + Ledger Audit)
 cd backend
 mvn test
 
-# 2. Python ML Engine & C++20 Native Kernel Checks (Ruff, strict Mypy, Pytest)
+# 2. Python ML Engine Checks (Ruff, strict Mypy, Pytest)
 .venv/bin/ruff check app tests
 .venv/bin/mypy app tests
 .venv/bin/pytest -v
-
-# 3. Frontend: ESLint, TypeScript, Vitest, and Vite production build
-cd ../frontend
-npm run lint
-npm run typecheck
-npm test -- --run
-npm run build
 ```

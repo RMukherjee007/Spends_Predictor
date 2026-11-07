@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('Transactions Ledger')}"></head>
+<body class="min-h-dvh bg-bg text-fg flex flex-col md:flex-row">
+
+  <aside th:replace="~{fragments/layout :: sidebar('transactions', ${user})}"></aside>
+
+  <div class="flex-1 flex flex-col min-w-0">
+    <header th:replace="~{fragments/layout :: mobileHeader}"></header>
+
+    <main class="flex-1 mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 md:py-10 pb-24 md:pb-10">
+      <div class="space-y-6">
+        <header class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 class="text-xl font-semibold tracking-tight text-fg">Transactions Ledger</h1>
+            <p class="text-xs text-muted">
+              Multi-currency transactions categorized by rules and calibrated ML with per-user active learning.
+            </p>
+          </div>
+
+          <button
+            type="button"
+            onclick="document.getElementById('csv-upload-panel').classList.toggle('hidden')"
+            class="inline-flex items-center gap-2 rounded-xl bg-brand px-3.5 py-2 text-xs font-semibold text-brand-fg hover:opacity-95 transition-opacity self-start sm:self-auto cursor-pointer"
+          >
+            <span>Import Statement CSV</span>
+          </button>
+        </header>
+
+        <!-- Collapsible CSV Import Panel -->
+        <section
+          id="csv-upload-panel"
+          aria-label="Upload CSV Statement"
+          class="hidden rounded-2xl border border-line bg-surface p-5 space-y-4"
+        >
+          <h2 class="text-sm font-semibold text-fg">Import Statement (CSV)</h2>
+          <form th:action="@{/ui/transactions/import-csv}" method="post" class="space-y-4">
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div class="space-y-1.5">
+                <label for="csv-account-select" class="text-xs font-medium text-fg">Target Account</label>
+                <select
+                  id="csv-account-select"
+                  name="account_id"
+                  aria-label="Target Account"
+                  class="w-full rounded-xl border border-line-strong bg-bg px-3 py-2 text-xs text-fg"
+                >
+                  <option value="" th:text="'Default CSV Statement Account (' + ${currency} + ')'">Default Account</option>
+                  <option th:each="a : ${accounts}" th:value="${a.id()}" th:text="${a.name()} + ' (' + ${a.currency()} + ')'">Account</option>
+                </select>
+              </div>
+              <div class="space-y-1.5">
+                <label for="csv-file-input" class="text-xs font-medium text-fg">Choose CSV File</label>
+                <input
+                  id="csv-file-input"
+                  type="file"
+                  accept=".csv"
+                  onchange="window.handleCsvFileSelect(this, 'csv-content-textarea')"
+                  class="w-full text-xs text-muted file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-surface-muted file:text-fg hover:file:opacity-90"
+                />
+              </div>
+            </div>
+
+            <div class="space-y-1.5">
+              <label for="csv-content-textarea" class="text-xs font-medium text-fg">Or Paste CSV Rows Directly</label>
+              <textarea
+                id="csv-content-textarea"
+                name="csv_content"
+                rows="4"
+                required
+                placeholder="Date,Narration,Debit,Credit,Currency&#10;2026-10-20,STARBUCKS COFFEE,450,,INR"
+                class="w-full rounded-xl border border-line-strong bg-bg p-3 text-xs font-mono text-fg"
+              ></textarea>
+            </div>
+
+            <div class="flex gap-2 justify-end pt-2">
+              <button
+                type="button"
+                onclick="document.getElementById('csv-upload-panel').classList.add('hidden')"
+                class="rounded-xl border border-line px-3 py-1.5 text-xs font-medium text-muted hover:text-fg"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                class="rounded-xl bg-brand px-4 py-1.5 text-xs font-semibold text-brand-fg cursor-pointer"
+              >
+                Parse &amp; Import
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <!-- Filter and Search Bar -->
+        <form
+          th:action="@{/transactions}"
+          method="get"
+          th:hx-get="@{/transactions}"
+          hx-target="#transactions-table-container"
+          hx-swap="outerHTML"
+          class="flex flex-col sm:flex-row gap-3"
+        >
+          <div class="relative flex-1">
+            <input
+              type="search"
+              name="q"
+              th:value="${searchQuery}"
+              placeholder="Search merchant or category…"
+              class="w-full rounded-xl border border-line-strong bg-surface px-3.5 py-2 text-xs text-fg placeholder:text-muted"
+            />
+          </div>
+
+          <div class="flex items-center gap-2">
+            <select
+              name="category"
+              aria-label="Filter by category"
+              th:hx-get="@{/transactions}"
+              hx-target="#transactions-table-container"
+              hx-swap="outerHTML"
+              class="rounded-xl border border-line-strong bg-surface px-3 py-2 text-xs text-fg"
+            >
+              <option value="all" th:selected="${selectedCategory == 'all'}">All Categories</option>
+              <option
+                th:each="cat : ${allCategories}"
+                th:value="${cat}"
+                th:selected="${selectedCategory == cat}"
+                th:text="${#strings.capitalize(cat)}"
+              >
+                Dining
+              </option>
+            </select>
+            <button
+              type="submit"
+              class="rounded-xl border border-line-strong bg-surface px-3 py-2 text-xs font-medium text-fg hover:bg-surface-muted"
+            >
+              Filter
+            </button>
+          </div>
+        </form>
+
+        <!-- HTMX Swappable Table Container -->
+        <div id="transactions-table-container" th:fragment="tableContainer" class="space-y-4">
+          <div
+            th:if="${statusMessage != null}"
+            role="status"
+            th:class="${statusError} ? 'flex items-center gap-2 rounded-xl border border-danger bg-surface p-3 text-xs text-danger' : 'flex items-center gap-2 rounded-xl border border-positive bg-surface p-3 text-xs text-positive'"
+          >
+            <span th:text="${statusMessage}">Status message</span>
+          </div>
+
+          <div
+            tabindex="0"
+            role="region"
+            aria-label="Transaction table"
+            class="rounded-2xl border border-line bg-surface overflow-x-auto"
+          >
+            <table class="w-full text-left border-collapse text-xs">
+              <thead>
+                <tr class="border-b border-line bg-surface-muted text-muted sticky top-0 z-10">
+                  <th class="py-3 px-4 font-medium">Date</th>
+                  <th class="py-3 px-4 font-medium">Merchant / Details</th>
+                  <th class="py-3 px-4 font-medium">Category (Active Learning)</th>
+                  <th class="py-3 px-4 font-medium">Source / ML Conf</th>
+                  <th class="py-3 px-4 font-medium text-right" th:text="'Amount (Base ' + ${currency} + ')'">Amount</th>
+                </tr>
+              </thead>
+              <tbody class="divide-y divide-line">
+                <tr th:if="${transactions.isEmpty()}">
+                  <td colspan="5" class="py-8 text-center text-muted">
+                    No matching transactions found.
+                  </td>
+                </tr>
+                <tr th:each="t : ${transactions}" class="hover:bg-surface-muted/40 transition-colors">
+                  <td class="py-3 px-4 whitespace-nowrap text-muted" th:text="${#strings.substring(t.occurredAt(), 0, 10)}">
+                    2026-10-20
+                  </td>
+                  <td class="py-3 px-4">
+                    <div class="flex items-center gap-2">
+                      <span class="font-medium text-fg" th:text="${t.merchantName()}">Merchant</span>
+                      <span
+                        th:if="${t.isAnomaly()}"
+                        th:title="${t.anomalyReason()}"
+                        class="inline-flex items-center gap-1 rounded bg-negative/10 text-negative px-1.5 py-0.5 text-[10px] font-semibold"
+                      >
+                        Anomaly
+                      </span>
+                      <span
+                        th:if="${t.isRecurring()}"
+                        class="rounded bg-brand/10 text-brand px-1.5 py-0.5 text-[10px] font-medium"
+                      >
+                        Recurring
+                      </span>
+                    </div>
+                    <p th:if="${t.currency() != currency}" class="text-[10px] text-muted" th:text="'Orig: ' + ${fmt.formatInCurrency(t.amountMinor(), t.currency())} + ' @ FX ' + ${#numbers.formatDecimal(t.fxRate(), 1, 2)}">
+                      Orig
+                    </p>
+                  </td>
+                  <td class="py-3 px-4">
+                    <form th:action="@{'/ui/transactions/' + ${t.id()} + '/category'}" method="post" class="inline">
+                      <select
+                        name="category"
+                        th:aria-label="'Change category for ' + ${t.merchantName()}"
+                        th:hx-post="@{'/ui/transactions/' + ${t.id()} + '/category'}"
+                        hx-target="#transactions-table-container"
+                        hx-swap="outerHTML"
+                        onchange="if (!window.fetch) this.form.submit()"
+                        class="rounded-lg border border-line-strong bg-bg px-2 py-1 text-xs text-fg focus:border-brand"
+                      >
+                        <option
+                          th:each="cat : ${allCategories}"
+                          th:value="${cat}"
+                          th:selected="${t.category() == cat}"
+                          th:text="${cat}"
+                        >
+                          dining
+                        </option>
+                      </select>
+                    </form>
+                  </td>
+                  <td class="py-3 px-4 whitespace-nowrap">
+                    <div class="flex items-center gap-1.5">
+                      <span
+                        th:class="${t.categorySource() == 'user'} ? 'inline-block px-1.5 py-0.5 rounded text-[10px] uppercase font-semibold bg-positive/10 text-positive' : (${t.categorySource() == 'ml'} ? 'inline-block px-1.5 py-0.5 rounded text-[10px] uppercase font-semibold bg-brand/10 text-brand' : 'inline-block px-1.5 py-0.5 rounded text-[10px] uppercase font-semibold bg-surface-muted text-muted')"
+                        th:text="${t.categorySource()}"
+                      >
+                        ml
+                      </span>
+                      <span class="text-[10px] text-muted" th:text="${#numbers.formatDecimal(t.categoryConfidence() * 100.0, 1, 0)} + '%'">
+                        95%
+                      </span>
+                    </div>
+                  </td>
+                  <td class="py-3 px-4 text-right whitespace-nowrap">
+                    <span
+                      th:class="${t.direction().toLowerCase() == 'credit'} ? 'inline-flex items-center gap-1 font-semibold tabular text-positive' : 'inline-flex items-center gap-1 font-semibold tabular text-fg'"
+                      th:text="${t.direction().toLowerCase() == 'credit'} ? '+' + ${fmt.format(t.amountBaseMinor())} : ${fmt.format(t.amountBaseMinor())}"
+                    >
+                      ₹0.00
+                    </span>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <nav th:replace="~{fragments/layout :: mobileNav('transactions')}"></nav>
+  </div>
+
+</body>
+</html>

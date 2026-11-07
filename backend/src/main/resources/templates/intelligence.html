@@ -1,0 +1,703 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('ML Intelligence')}"></head>
+<body class="min-h-dvh bg-bg text-fg flex flex-col md:flex-row">
+
+  <aside th:replace="~{fragments/layout :: sidebar('intelligence', ${user})}"></aside>
+
+  <div class="flex-1 flex flex-col min-w-0">
+    <header th:replace="~{fragments/layout :: mobileHeader}"></header>
+
+    <main class="flex-1 mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 md:py-10 pb-24 md:pb-10">
+
+      <!-- Empty State when 0 transactions exist -->
+      <div
+        th:if="${!hasLedgerData}"
+        class="rounded-2xl border border-line bg-surface p-12 text-center space-y-4"
+      >
+        <h2 class="text-base font-semibold">No ML Insights Generated Yet</h2>
+        <p class="text-xs text-muted max-w-md mx-auto">
+          Please link your sandbox bank accounts or import a CSV statement to enable machine learning forecasts, Java 21 QuantCore runway simulations, and anomaly detection.
+        </p>
+        <div class="flex justify-center gap-3">
+          <form th:action="@{/ui/accounts/sync}" method="post">
+            <input type="hidden" name="redirect" value="/intelligence" />
+            <button
+              type="submit"
+              class="rounded-xl bg-brand px-4 py-2 text-xs font-semibold text-brand-fg cursor-pointer"
+            >
+              Connect Sandbox Accounts
+            </button>
+          </form>
+          <a
+            th:href="@{/transactions}"
+            class="rounded-xl border border-line bg-surface px-4 py-2 text-xs font-semibold text-fg"
+          >
+            Upload Statement
+          </a>
+        </div>
+      </div>
+
+      <!-- Full 7-Pillar Intelligence View -->
+      <div th:if="${hasLedgerData}" class="space-y-8">
+        <!-- Page Header -->
+        <header class="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <div class="flex items-center gap-2">
+              <span class="inline-flex items-center gap-1.5 rounded-full bg-brand/10 text-brand px-2.5 py-0.5 text-[11px] font-semibold">
+                7-Pillar ML Engine
+              </span>
+              <span class="text-xs text-muted" th:text="'Currency: ' + ${currency}">Currency: INR</span>
+            </div>
+            <h1 class="font-semibold tracking-tight text-fg mt-1 text-2xl sm:text-3xl">
+              Financial Intelligence &amp; Predictive Analytics
+            </h1>
+          </div>
+
+          <a
+            th:href="@{/intelligence(tab=${activeTab})}"
+            class="inline-flex items-center gap-2 rounded-xl border border-line bg-surface px-3.5 py-2 text-xs font-medium text-fg hover:bg-surface-muted transition"
+          >
+            <span>Re-run Models</span>
+          </a>
+        </header>
+
+        <!-- Dual High-Performance / Strict Security Telemetry Banners -->
+        <section aria-label="Verification and Hardware Telemetry" class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <!-- Java 21 In-JVM QuantCore Telemetry -->
+          <div class="rounded-2xl border border-line bg-surface p-5 space-y-3">
+            <div class="flex items-center justify-between">
+              <div>
+                <h2 class="text-xs font-semibold uppercase tracking-wider text-fg">Java 21 In-JVM QuantCore</h2>
+                <p class="text-[11px] text-muted" th:text="${runway.get('mc_engine')}">Java 21 In-JVM QuantCore</p>
+              </div>
+              <span
+                class="inline-flex items-center gap-1 rounded-md bg-positive/10 text-positive px-2 py-0.5 text-xs font-mono font-medium"
+                th:text="${#numbers.formatDecimal(runway.get('mc_execution_time_us') / 1000.0, 1, 2)} + ' ms'"
+              >
+                0.45 ms
+              </span>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3 pt-1 text-xs">
+              <div class="rounded-xl bg-surface-muted/60 p-2.5">
+                <span class="text-muted block text-[11px]">Monte Carlo Simulation</span>
+                <span class="font-semibold text-fg tabular" th:text="${runway.get('mc_simulations_count')} + ' paths × 30d'">
+                  10000 paths &times; 30d
+                </span>
+              </div>
+              <div class="rounded-xl bg-surface-muted/60 p-2.5">
+                <span class="text-muted block text-[11px]">Wald Analytical Barrier Pct</span>
+                <span class="font-semibold text-fg font-mono" th:text="${#numbers.formatDecimal(runway.get('wald_analytical_probability_pct'), 1, 2)} + '%'">
+                  0.00%
+                </span>
+              </div>
+            </div>
+            <p class="text-[11px] text-muted leading-tight">
+              Exact Bachelier-Wald Brownian motion with drift barrier formula computed alongside SplitMix64 pseudo-random generation in-JVM.
+            </p>
+          </div>
+
+          <!-- Java OpenJDK Strict Financial Ledger Audit Seal -->
+          <div class="rounded-2xl border border-line bg-surface p-5 space-y-3">
+            <div class="flex items-center justify-between">
+              <div>
+                <h2 class="text-xs font-semibold uppercase tracking-wider text-fg">Java OpenJDK Strict Audit</h2>
+                <p class="text-[11px] text-muted" th:text="${javaAudit.get('verifier_engine')}">Java OpenJDK BigDecimal</p>
+              </div>
+              <span
+                th:class="${javaAudit.get('is_valid')} ? 'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium bg-positive/10 text-positive' : 'inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium bg-danger/10 text-danger'"
+                th:text="${javaAudit.get('is_valid')} ? 'Seal Verified' : 'Audit Mismatch'"
+              >
+                Seal Verified
+              </span>
+            </div>
+
+            <div class="space-y-1.5">
+              <div class="flex items-center justify-between text-xs">
+                <span class="text-muted">SHA-256 Hash-Chain Audit Seal:</span>
+                <button
+                  type="button"
+                  th:data-seal="${javaAudit.get('audit_seal_sha256')}"
+                  onclick="window.copyAuditSeal(this, this.getAttribute('data-seal'))"
+                  class="text-[11px] text-brand hover:underline font-medium cursor-pointer"
+                >
+                  Copy Hash
+                </button>
+              </div>
+              <div class="rounded-lg bg-surface-muted p-2 font-mono text-[11px] text-fg truncate select-all" th:text="${javaAudit.get('audit_seal_sha256')}">
+                0000
+              </div>
+            </div>
+
+            <div class="flex items-center justify-between text-[11px] text-muted pt-0.5">
+              <span th:text="'Verified: ' + ${javaAudit.get('verified_debit_count')} + ' debits · ' + ${javaAudit.get('verified_credit_count')} + ' credits'">
+                Verified: 0 debits &bull; 0 credits
+              </span>
+              <span class="text-positive font-medium">0.00 Float Drift (DECIMAL128)</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- Top Probabilistic Forecast Range Cards -->
+        <section aria-label="Probabilistic Summary Cards" class="@container">
+          <div class="grid grid-cols-1 sm:grid-cols-4 gap-4">
+            <article class="rounded-2xl border border-line bg-surface p-5 space-y-2">
+              <div class="flex items-center justify-between text-xs text-muted">
+                <span>Expected Month-End (P50)</span>
+              </div>
+              <p class="text-2xl font-bold tracking-tight tabular text-fg" th:text="${fmt.format(insights.get('forecast_p50_minor'))}">
+                ₹0.00
+              </p>
+              <div class="flex items-center justify-between text-[11px] text-muted">
+                <span th:text="'P10: ' + ${fmt.format(insights.get('forecast_p10_minor'))}">P10</span>
+                <span th:text="'P90: ' + ${fmt.format(insights.get('forecast_p90_minor'))}">P90</span>
+              </div>
+            </article>
+
+            <article class="rounded-2xl border border-line bg-surface p-5 space-y-2">
+              <div class="flex items-center justify-between text-xs text-muted">
+                <span>Month-to-Date Spent</span>
+              </div>
+              <p class="text-2xl font-bold tracking-tight tabular text-fg" th:text="${fmt.format(insights.get('spent_this_month_minor'))}">
+                ₹0.00
+              </p>
+              <p class="text-xs text-muted" th:text="'Velocity: ~' + ${fmt.format(insights.get('daily_velocity_minor'))} + ' / day'">
+                Velocity
+              </p>
+            </article>
+
+            <article class="rounded-2xl border border-line bg-surface p-5 space-y-2">
+              <div class="flex items-center justify-between text-xs text-muted">
+                <span>Upcoming Recurring Bills</span>
+              </div>
+              <p class="text-2xl font-bold tracking-tight tabular text-fg" th:text="${fmt.format(insights.get('remaining_recurring_minor'))}">
+                ₹0.00
+              </p>
+              <p class="text-xs text-muted">Committed subscriptions &amp; dues</p>
+            </article>
+
+            <article class="rounded-2xl border border-line bg-surface p-5 space-y-2">
+              <div class="flex items-center justify-between text-xs text-muted">
+                <span>Liquid Runway Survival</span>
+              </div>
+              <p class="text-2xl font-bold tracking-tight tabular text-fg" th:text="${runway.get('expected_days_above_threshold')} + ' Days'">
+                30 Days
+              </p>
+              <p class="text-xs text-muted" th:text="'Above buffer · Payday: ' + ${runway.get('next_predicted_payday')}">
+                Above buffer
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <!-- Dynamic HTMX Tab Container -->
+        <div id="intelligence-tab-content" th:fragment="tabContent" class="space-y-6">
+          <!-- Tabs Navigation for 7 Pillars -->
+          <div class="border-b border-line">
+            <nav aria-label="Intelligence Sections" class="flex space-x-2 overflow-x-auto pb-2">
+              <a
+                th:href="@{/intelligence(tab='forecast')}"
+                th:hx-get="@{/intelligence(tab='forecast')}"
+                hx-target="#intelligence-tab-content"
+                hx-swap="outerHTML"
+                hx-push-url="true"
+                th:class="${activeTab == 'forecast'} ? 'flex items-center gap-2 whitespace-nowrap rounded-xl px-3.5 py-2 text-xs font-semibold transition bg-fg text-bg shadow-sm' : 'flex items-center gap-2 whitespace-nowrap rounded-xl px-3.5 py-2 text-xs font-semibold transition text-muted hover:bg-surface-muted hover:text-fg'"
+              >
+                <span>1. Cashflow Forecast</span>
+              </a>
+              <a
+                th:href="@{/intelligence(tab='models')}"
+                th:hx-get="@{/intelligence(tab='models')}"
+                hx-target="#intelligence-tab-content"
+                hx-swap="outerHTML"
+                hx-push-url="true"
+                th:class="${activeTab == 'models'} ? 'flex items-center gap-2 whitespace-nowrap rounded-xl px-3.5 py-2 text-xs font-semibold transition bg-fg text-bg shadow-sm' : 'flex items-center gap-2 whitespace-nowrap rounded-xl px-3.5 py-2 text-xs font-semibold transition text-muted hover:bg-surface-muted hover:text-fg'"
+              >
+                <span>2. Multi-Model Backtest</span>
+              </a>
+              <a
+                th:href="@{/intelligence(tab='runway')}"
+                th:hx-get="@{/intelligence(tab='runway')}"
+                hx-target="#intelligence-tab-content"
+                hx-swap="outerHTML"
+                hx-push-url="true"
+                th:class="${activeTab == 'runway'} ? 'flex items-center gap-2 whitespace-nowrap rounded-xl px-3.5 py-2 text-xs font-semibold transition bg-fg text-bg shadow-sm' : 'flex items-center gap-2 whitespace-nowrap rounded-xl px-3.5 py-2 text-xs font-semibold transition text-muted hover:bg-surface-muted hover:text-fg'"
+              >
+                <span>3. Monte Carlo Runway</span>
+              </a>
+              <a
+                th:href="@{/intelligence(tab='recurring')}"
+                th:hx-get="@{/intelligence(tab='recurring')}"
+                hx-target="#intelligence-tab-content"
+                hx-swap="outerHTML"
+                hx-push-url="true"
+                th:class="${activeTab == 'recurring'} ? 'flex items-center gap-2 whitespace-nowrap rounded-xl px-3.5 py-2 text-xs font-semibold transition bg-fg text-bg shadow-sm' : 'flex items-center gap-2 whitespace-nowrap rounded-xl px-3.5 py-2 text-xs font-semibold transition text-muted hover:bg-surface-muted hover:text-fg'"
+              >
+                <span>4. Recurring &amp; Price Hikes</span>
+              </a>
+              <a
+                th:href="@{/intelligence(tab='anomalies')}"
+                th:hx-get="@{/intelligence(tab='anomalies')}"
+                hx-target="#intelligence-tab-content"
+                hx-swap="outerHTML"
+                hx-push-url="true"
+                th:class="${activeTab == 'anomalies'} ? 'flex items-center gap-2 whitespace-nowrap rounded-xl px-3.5 py-2 text-xs font-semibold transition bg-fg text-bg shadow-sm' : 'flex items-center gap-2 whitespace-nowrap rounded-xl px-3.5 py-2 text-xs font-semibold transition text-muted hover:bg-surface-muted hover:text-fg'"
+              >
+                <span>5. Anomalies &amp; CUSUM</span>
+              </a>
+              <a
+                th:href="@{/intelligence(tab='personas')}"
+                th:hx-get="@{/intelligence(tab='personas')}"
+                hx-target="#intelligence-tab-content"
+                hx-swap="outerHTML"
+                hx-push-url="true"
+                th:class="${activeTab == 'personas'} ? 'flex items-center gap-2 whitespace-nowrap rounded-xl px-3.5 py-2 text-xs font-semibold transition bg-fg text-bg shadow-sm' : 'flex items-center gap-2 whitespace-nowrap rounded-xl px-3.5 py-2 text-xs font-semibold transition text-muted hover:bg-surface-muted hover:text-fg'"
+              >
+                <span>6. Personas &amp; SHAP XAI</span>
+              </a>
+            </nav>
+          </div>
+
+          <!-- Tab 1: Forecast -->
+          <section th:if="${activeTab == 'forecast'}" aria-labelledby="forecast-heading" class="space-y-6">
+            <div class="rounded-2xl border border-line bg-surface p-6 space-y-4">
+              <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+                <div>
+                  <h2 id="forecast-heading" class="text-base font-semibold tracking-tight">
+                    Hierarchical Category Forecast (MinT Reconciled)
+                  </h2>
+                  <p class="text-xs text-muted">
+                    Category predictions are reconciled with total budget using Minimum Trace (MinT) closed-form matrix math to guarantee coherent additivity.
+                  </p>
+                </div>
+                <span class="self-start inline-flex items-center gap-1 rounded-full bg-brand/10 text-brand px-3 py-1 text-xs font-medium">
+                  <span>MinT Matrix Invariance Ensured</span>
+                </span>
+              </div>
+
+              <div class="overflow-x-auto rounded-xl border border-line">
+                <table class="w-full text-left text-xs border-collapse">
+                  <thead class="bg-surface-muted/60 text-muted font-medium border-b border-line">
+                    <tr>
+                      <th class="p-3">Category</th>
+                      <th class="p-3">MTD Spent</th>
+                      <th class="p-3">P10 (Optimistic)</th>
+                      <th class="p-3">P50 (Expected)</th>
+                      <th class="p-3">P90 (Pessimistic)</th>
+                      <th class="p-3">Historical Monthly Avg</th>
+                      <th class="p-3 text-right">Budget Share</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-line text-fg">
+                    <tr th:each="cat : ${categoryForecasts}" class="hover:bg-surface-muted/40 font-medium">
+                      <td class="p-3 font-semibold capitalize" th:text="${cat.get('category')}">Category</td>
+                      <td class="p-3 tabular" th:text="${fmt.format(cat.get('spent_so_far_minor'))}">₹0</td>
+                      <td class="p-3 tabular text-positive" th:text="${fmt.format(cat.get('p10_minor'))}">₹0</td>
+                      <td class="p-3 tabular font-bold" th:text="${fmt.format(cat.get('p50_minor'))}">₹0</td>
+                      <td class="p-3 tabular text-muted" th:text="${fmt.format(cat.get('p90_minor'))}">₹0</td>
+                      <td class="p-3 tabular text-muted" th:text="${fmt.format(cat.get('historical_monthly_mean_minor'))}">₹0</td>
+                      <td class="p-3 text-right tabular font-mono" th:text="${#numbers.formatDecimal(cat.get('share_pct'), 1, 1)} + '%'">0.0%</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <!-- Tab 2: Multi-Model Backtest -->
+          <section th:if="${activeTab == 'models'}" aria-labelledby="models-heading" class="space-y-6">
+            <div class="rounded-2xl border border-line bg-surface p-6 space-y-5">
+              <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <h2 id="models-heading" class="text-base font-semibold tracking-tight">
+                    Time-Series Model Comparison &amp; Backtesting
+                  </h2>
+                  <p class="text-xs text-muted">
+                    Strictly evaluated on rolling out-of-fold temporal splits with 1,000-sample bootstrap confidence intervals.
+                  </p>
+                </div>
+                <div class="flex items-center gap-2">
+                  <span class="text-xs text-muted">Winning Model:</span>
+                  <span class="rounded-lg bg-positive/10 text-positive px-2.5 py-1 text-xs font-semibold" th:text="${insights.get('selected_model')}">
+                    Model
+                  </span>
+                </div>
+              </div>
+
+              <div class="overflow-x-auto rounded-xl border border-line">
+                <table class="w-full text-left text-xs border-collapse">
+                  <thead class="bg-surface-muted/60 text-muted font-medium border-b border-line">
+                    <tr>
+                      <th class="p-3">Candidate Model</th>
+                      <th class="p-3">Status</th>
+                      <th class="p-3">WAPE</th>
+                      <th class="p-3">MAPE</th>
+                      <th class="p-3">95% Bootstrap CI</th>
+                      <th class="p-3">MAE</th>
+                      <th class="p-3">Methodology Notes</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-line text-fg">
+                    <tr th:each="m : ${modelComparisons}" th:class="${m.get('is_selected')} ? 'bg-brand/5 font-semibold' : 'hover:bg-surface-muted/40'">
+                      <td class="p-3" th:text="${m.get('model_name')}">Model</td>
+                      <td class="p-3">
+                        <span th:if="${m.get('is_selected')}" class="rounded-md bg-positive/10 text-positive px-2 py-0.5 text-[11px] font-semibold">Production Active</span>
+                        <span th:unless="${m.get('is_selected')}" class="text-muted text-[11px]">Benchmark</span>
+                      </td>
+                      <td class="p-3 tabular font-mono font-bold" th:text="${#numbers.formatDecimal(m.get('wape_pct'), 1, 2)} + '%'">0.00%</td>
+                      <td class="p-3 tabular font-mono" th:text="${#numbers.formatDecimal(m.get('mape_pct'), 1, 2)} + '%'">0.00%</td>
+                      <td class="p-3 tabular font-mono text-muted" th:text="'[' + ${#numbers.formatDecimal(m.get('ci95_low_pct'), 1, 1)} + '%, ' + ${#numbers.formatDecimal(m.get('ci95_high_pct'), 1, 1)} + '%]'">[0%, 0%]</td>
+                      <td class="p-3 tabular" th:text="${fmt.format(m.get('mae_minor'))}">₹0</td>
+                      <td class="p-3 text-xs text-muted max-w-xs" th:text="${m.get('notes')}">Notes</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="pt-4 border-t border-line space-y-3">
+                <h3 class="text-xs font-semibold uppercase tracking-wider text-muted">
+                  Temporal Out-of-Sample Backtest Series
+                </h3>
+                <div class="overflow-x-auto rounded-xl border border-line">
+                  <table class="w-full text-left text-xs border-collapse">
+                    <thead class="bg-surface-muted/60 text-muted font-medium border-b border-line">
+                      <tr>
+                        <th class="p-3">Evaluation Month</th>
+                        <th class="p-3">Ground Truth Actual</th>
+                        <th class="p-3">Selected ML Engine</th>
+                        <th class="p-3">Holt-Winters ETS</th>
+                        <th class="p-3">Naive Seasonal Baseline</th>
+                      </tr>
+                    </thead>
+                    <tbody class="divide-y divide-line text-fg">
+                      <tr th:each="pt : ${backtestSeries}" class="hover:bg-surface-muted/40">
+                        <td class="p-3 font-semibold" th:text="${pt.get('month')}">2026-08</td>
+                        <td class="p-3 tabular font-bold" th:text="${fmt.format(pt.get('actual_minor'))}">₹0</td>
+                        <td class="p-3 tabular text-brand font-semibold" th:text="${fmt.format(pt.get('ml_pred_minor'))}">₹0</td>
+                        <td class="p-3 tabular text-muted" th:text="${fmt.format(pt.get('ets_pred_minor'))}">₹0</td>
+                        <td class="p-3 tabular text-muted" th:text="${fmt.format(pt.get('naive_pred_minor'))}">₹0</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <!-- Tab 3: Monte Carlo Runway -->
+          <section th:if="${activeTab == 'runway'}" aria-labelledby="runway-heading" class="space-y-6">
+            <div class="rounded-2xl border border-line bg-surface p-6 space-y-5">
+              <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <h2 id="runway-heading" class="text-base font-semibold tracking-tight">
+                    30-Day Liquidity Runway Simulation
+                  </h2>
+                  <p class="text-xs text-muted">
+                    Powered by in-JVM Java 21 QuantCore (<code class="font-mono">QuantCoreKernel</code>) executing 10,000 paths in microseconds.
+                  </p>
+                </div>
+                <div class="flex items-center gap-3">
+                  <span class="text-xs text-muted">Safe Liquid Buffer:</span>
+                  <span class="font-mono font-semibold text-fg" th:text="${fmt.format(runway.get('safe_threshold_minor'))}">₹0</span>
+                </div>
+              </div>
+
+              <div class="rounded-xl border border-positive/30 bg-positive/10 text-positive p-4 text-xs">
+                <p class="font-semibold" th:text="'Overdraft / Below-Threshold Probability: ' + ${#numbers.formatDecimal(runway.get('overdraft_watch_probability_pct'), 1, 2)} + '%'">
+                  Overdraft Probability
+                </p>
+                <p class="mt-0.5 opacity-90" th:text="'Analytical Wald first-passage probability is ' + ${#numbers.formatDecimal(runway.get('wald_analytical_probability_pct'), 1, 2)} + '%. Next scheduled payday: ' + ${runway.get('next_predicted_payday')}">
+                  Analytical Wald probability
+                </p>
+              </div>
+
+              <div class="overflow-x-auto rounded-xl border border-line max-h-96">
+                <table class="w-full text-left text-xs border-collapse">
+                  <thead class="bg-surface-muted/60 text-muted font-medium border-b border-line sticky top-0">
+                    <tr>
+                      <th class="p-3">Timeline</th>
+                      <th class="p-3">Calendar Date</th>
+                      <th class="p-3">P10 Balance (Cautious)</th>
+                      <th class="p-3">P50 Expected Balance</th>
+                      <th class="p-3">P90 Balance (Optimistic)</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-line text-fg">
+                    <tr th:each="pt : ${trajectory}" class="hover:bg-surface-muted/40">
+                      <td class="p-3 font-medium" th:text="'Day +' + ${pt.get('day_offset')}">Day +0</td>
+                      <td class="p-3 font-semibold" th:text="${pt.get('date')}">2026-11-08</td>
+                      <td class="p-3 tabular text-muted" th:text="${fmt.format(pt.get('p10_balance_minor'))}">₹0</td>
+                      <td class="p-3 tabular font-bold text-fg" th:text="${fmt.format(pt.get('p50_balance_minor'))}">₹0</td>
+                      <td class="p-3 tabular text-positive" th:text="${fmt.format(pt.get('p90_balance_minor'))}">₹0</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <!-- Tab 4: Recurring & Price Hikes -->
+          <section th:if="${activeTab == 'recurring'}" aria-labelledby="recurring-heading" class="space-y-6">
+            <div class="rounded-2xl border border-line bg-surface p-6 space-y-5">
+              <div>
+                <h2 id="recurring-heading" class="text-base font-semibold tracking-tight">
+                  Recurring Commitments &amp; Silent Price Hike Watch
+                </h2>
+                <p class="text-xs text-muted">
+                  Autonomously monitors subscription cadence, detects billing drifts, and flags unnoticed price hikes.
+                </p>
+              </div>
+
+              <div class="overflow-x-auto rounded-xl border border-line">
+                <table class="w-full text-left text-xs border-collapse">
+                  <thead class="bg-surface-muted/60 text-muted font-medium border-b border-line">
+                    <tr>
+                      <th class="p-3">Merchant / Service</th>
+                      <th class="p-3">Category</th>
+                      <th class="p-3">Billing Cadence</th>
+                      <th class="p-3">Typical Baseline</th>
+                      <th class="p-3">Latest Charge</th>
+                      <th class="p-3">Price Hike Status</th>
+                      <th class="p-3">Next Due Date</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-line text-fg">
+                    <tr th:each="bill : ${recurringBills}" th:class="${bill.get('has_price_hike')} ? 'bg-danger/5' : 'hover:bg-surface-muted/40'">
+                      <td class="p-3 font-semibold text-fg" th:text="${bill.get('merchant_name')}">Merchant</td>
+                      <td class="p-3 capitalize" th:text="${bill.get('category')}">subscriptions</td>
+                      <td class="p-3 capitalize" th:text="${bill.get('cadence')} + ' (~' + ${bill.get('avg_interval_days')} + 'd)'">monthly</td>
+                      <td class="p-3 tabular" th:text="${fmt.format(bill.get('typical_amount_minor'))}">₹0</td>
+                      <td class="p-3 tabular font-semibold" th:text="${fmt.format(bill.get('latest_amount_minor'))}">₹0</td>
+                      <td class="p-3">
+                        <span th:if="${bill.get('has_price_hike')}" class="inline-flex items-center gap-1 rounded-md bg-danger/15 text-danger px-2 py-0.5 text-[11px] font-bold" th:text="'+' + ${#numbers.formatDecimal(bill.get('price_creep_pct'), 1, 1)} + '% Hike Detected'">Hike</span>
+                        <span th:unless="${bill.get('has_price_hike')}" class="text-positive text-[11px] font-medium">Stable</span>
+                      </td>
+                      <td class="p-3 font-mono text-muted" th:text="${bill.get('next_expected_date')}">2026-12-01</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <!-- Tab 5: Anomalies & CUSUM -->
+          <section th:if="${activeTab == 'anomalies'}" aria-labelledby="anomalies-heading" class="space-y-6">
+            <div class="rounded-2xl border border-line bg-surface p-6 space-y-4">
+              <div>
+                <h2 id="anomalies-heading" class="text-base font-semibold tracking-tight">
+                  Dual-Stage Ensemble Outlier Detection
+                </h2>
+                <p class="text-xs text-muted">
+                  Unsupervised Isolation Forest combined with Median Absolute Deviation (MAD) robust Z-scoring.
+                </p>
+              </div>
+
+              <div th:if="${anomalies.isEmpty()}" class="rounded-xl border border-line p-6 text-center text-xs text-muted">
+                No high-severity anomalous spends detected in recent ledger history.
+              </div>
+
+              <div th:unless="${anomalies.isEmpty()}" class="overflow-x-auto rounded-xl border border-line">
+                <table class="w-full text-left text-xs border-collapse">
+                  <thead class="bg-surface-muted/60 text-muted font-medium border-b border-line">
+                    <tr>
+                      <th class="p-3">Date</th>
+                      <th class="p-3">Merchant</th>
+                      <th class="p-3">Category</th>
+                      <th class="p-3">Amount</th>
+                      <th class="p-3">MAD Robust Z</th>
+                      <th class="p-3">Isolation Forest</th>
+                      <th class="p-3">Severity</th>
+                      <th class="p-3">Diagnostic Rationale</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-line text-fg">
+                    <tr th:each="anom : ${anomalies}" class="hover:bg-surface-muted/40">
+                      <td class="p-3 text-muted whitespace-nowrap" th:text="${#strings.substring(anom.get('occurred_at'), 0, 10)}">2026-10-15</td>
+                      <td class="p-3 font-semibold" th:text="${anom.get('merchant_name')}">Merchant</td>
+                      <td class="p-3 capitalize" th:text="${anom.get('category')}">shopping</td>
+                      <td class="p-3 tabular font-bold" th:text="${fmt.format(anom.get('amount_base_minor'))}">₹0</td>
+                      <td class="p-3 tabular font-mono" th:text="'z=' + ${#numbers.formatDecimal(anom.get('robust_zscore'), 1, 2)}">z=3.5</td>
+                      <td class="p-3 tabular font-mono" th:text="${#numbers.formatDecimal(anom.get('iforest_score'), 1, 3)}">0.120</td>
+                      <td class="p-3">
+                        <span class="rounded-md bg-danger/15 text-danger px-2 py-0.5 text-[11px] font-semibold uppercase" th:text="${anom.get('combined_severity')}">HIGH</span>
+                      </td>
+                      <td class="p-3 text-xs text-muted max-w-sm" th:text="${anom.get('reason')}">Reason</td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <div class="rounded-2xl border border-line bg-surface p-6 space-y-4">
+              <div>
+                <h3 class="text-base font-semibold tracking-tight">
+                  Page's CUSUM Lifestyle Creep Detector
+                </h3>
+                <p class="text-xs text-muted">
+                  Statistically tracks subtle cumulative shifts in discretionary category run-rates over time.
+                </p>
+              </div>
+
+              <div class="overflow-x-auto rounded-xl border border-line">
+                <table class="w-full text-left text-xs border-collapse">
+                  <thead class="bg-surface-muted/60 text-muted font-medium border-b border-line">
+                    <tr>
+                      <th class="p-3">Category</th>
+                      <th class="p-3">Baseline Weekly Average</th>
+                      <th class="p-3">Recent Weekly Average</th>
+                      <th class="p-3">Run-Rate Drift</th>
+                      <th class="p-3">Standardized CUSUM</th>
+                      <th class="p-3">Diagnosis</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-line text-fg">
+                    <tr th:each="c : ${lifestyleCreep}" class="hover:bg-surface-muted/40">
+                      <td class="p-3 font-semibold capitalize" th:text="${c.get('category')}">dining</td>
+                      <td class="p-3 tabular" th:text="${fmt.format(c.get('early_weekly_avg_minor'))}">₹0</td>
+                      <td class="p-3 tabular font-bold" th:text="${fmt.format(c.get('recent_weekly_avg_minor'))}">₹0</td>
+                      <td class="p-3 tabular font-mono" th:text="${#numbers.formatDecimal(c.get('drift_pct'), 1, 1)} + '%'">0.0%</td>
+                      <td class="p-3 tabular font-mono" th:text="${#numbers.formatDecimal(c.get('cusum_stat'), 1, 2)}">0.00</td>
+                      <td class="p-3">
+                        <span
+                          th:class="${c.get('status') == 'creep_alert' or c.get('status') == 'creeping_up'} ? 'rounded-md px-2 py-0.5 text-[11px] font-semibold bg-danger/15 text-danger' : 'rounded-md px-2 py-0.5 text-[11px] font-semibold bg-surface-muted text-muted'"
+                          th:text="${c.get('status') == 'creep_alert' or c.get('status') == 'creeping_up'} ? 'Lifestyle Creep Alert' : 'Normal Variance'"
+                        >
+                          Normal Variance
+                        </span>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <!-- Tab 6: Personas & SHAP XAI -->
+          <section th:if="${activeTab == 'personas'}" aria-labelledby="personas-heading" class="space-y-6">
+            <div class="rounded-2xl border border-line bg-surface p-6 space-y-5">
+              <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+                <div>
+                  <h2 id="personas-heading" class="text-base font-semibold tracking-tight" th:text="'Behavioral Personas & K-Means Clustering (Optimal k=' + ${insights.get('optimal_k')} + ')'">
+                    Behavioral Personas
+                  </h2>
+                  <p class="text-xs text-muted" th:text="'Evaluated using Silhouette maximization (score: ' + ${#numbers.formatDecimal(insights.get('silhouette_score'), 1, 3)} + ') on multi-dimensional transaction features.'">
+                    Silhouette score
+                  </p>
+                </div>
+                <div class="rounded-xl bg-surface-muted px-3 py-1.5 text-xs text-fg">
+                  Dominant Persona: <strong class="text-brand" th:text="${insights.get('dominant_persona')}">Persona</strong>
+                </div>
+              </div>
+
+              <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div th:each="cl : ${clusters}" class="rounded-xl border border-line bg-surface-muted/30 p-4 space-y-2.5">
+                  <div class="flex items-center justify-between">
+                    <h3 class="text-xs font-semibold text-fg tracking-tight" th:text="${cl.get('persona_name')}">Persona</h3>
+                    <span class="text-[11px] font-mono text-muted" th:text="${#numbers.formatDecimal(cl.get('transaction_share_pct'), 1, 0)} + '% txns'">0%</span>
+                  </div>
+                  <p class="text-xs text-muted leading-relaxed" th:text="${cl.get('description')}">Description</p>
+                  <div class="pt-2 border-t border-line text-[11px] text-muted space-y-1">
+                    <div class="flex justify-between">
+                      <span>Avg Ticket:</span>
+                      <strong class="text-fg tabular" th:text="${fmt.format(cl.get('avg_amount_minor'))}">₹0</strong>
+                    </div>
+                    <div class="flex justify-between">
+                      <span>Weekend Ratio:</span>
+                      <strong class="text-fg font-mono" th:text="${#numbers.formatDecimal(cl.get('weekend_ratio_pct'), 1, 1)} + '%'">0%</strong>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- SHAP Feature Attribution Waterfall -->
+            <div class="rounded-2xl border border-line bg-surface p-6 space-y-4">
+              <div>
+                <h3 class="text-base font-semibold tracking-tight">
+                  Explainable AI: SHAP Feature Attribution
+                </h3>
+                <p class="text-xs text-muted">
+                  Shapley values decompose how specific behavioral factors exert upward or downward pressure on month-end spend.
+                </p>
+              </div>
+
+              <div class="space-y-3">
+                <div th:each="s : ${shapAttributions}" class="flex items-center justify-between rounded-xl border border-line bg-surface-muted/20 p-3.5 text-xs">
+                  <div class="space-y-0.5 max-w-lg">
+                    <p class="font-semibold text-fg" th:text="${s.get('feature')}">Feature</p>
+                    <p class="text-[11px] text-muted" th:text="${s.get('explanation')}">Explanation</p>
+                  </div>
+                  <div class="text-right">
+                    <span
+                      th:class="${s.get('direction') == 'up'} ? 'font-mono font-bold tabular text-danger' : (${s.get('direction') == 'down'} ? 'font-mono font-bold tabular text-positive' : 'font-mono font-bold tabular text-fg')"
+                      th:text="${fmt.format(s.get('impact_minor'))}"
+                    >
+                      ₹0
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Counterfactual Savings Recommendations -->
+            <div class="rounded-2xl border border-line bg-surface p-6 space-y-4">
+              <div>
+                <h3 class="text-base font-semibold tracking-tight">
+                  Counterfactual &ldquo;What-If&rdquo; Elasticity Recommendations
+                </h3>
+                <p class="text-xs text-muted">
+                  Algorithmic adjustments ranked by behavioral price elasticity to minimize lifestyle disruption.
+                </p>
+              </div>
+
+              <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div th:each="rec : ${savingsRecommendations}" class="rounded-xl border border-line bg-surface-muted/20 p-4 space-y-3 flex flex-col justify-between">
+                  <div class="space-y-1.5">
+                    <div class="flex items-center justify-between">
+                      <span class="font-semibold text-fg capitalize text-xs" th:text="${rec.get('category')} + ' Optimization'">Optimization</span>
+                      <span class="text-[11px] font-mono text-positive bg-positive/10 px-2 py-0.5 rounded-md font-bold" th:text="'Save ' + ${fmt.format(rec.get('monthly_savings_minor'))} + ' / mo'">
+                        Save ₹0 / mo
+                      </span>
+                    </div>
+                    <p class="text-xs text-muted leading-relaxed" th:text="${rec.get('action_tip')}">Tip</p>
+                  </div>
+                  <div class="pt-2 border-t border-line flex items-center justify-between text-xs">
+                    <span class="text-muted">
+                      Annual Potential: <strong class="text-fg" th:text="${fmt.format(rec.get('annual_savings_minor'))}">₹0</strong>
+                    </span>
+                    <span class="text-[11px] text-muted" th:text="'Elasticity: ' + ${#numbers.formatDecimal(rec.get('elasticity_score'), 1, 2)}">0.50</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <!-- Categorizer Active Learning Callout -->
+        <section class="rounded-2xl border border-line bg-surface-muted/40 p-5 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div class="space-y-1">
+            <h3 class="text-xs font-semibold uppercase tracking-wider text-muted">
+              Continuous Active Learning
+            </h3>
+            <p class="text-xs text-fg">
+              Merchant classifier holds a <strong th:text="${#numbers.formatDecimal(insights.get('classifier_macro_f1') * 100.0, 1, 1)} + '% Macro F1 score'">95.0% Macro F1 score</strong>
+              on out-of-sample data with <span th:text="${insights.get('user_rules_count')}">0</span> active user override rules.
+            </p>
+          </div>
+          <a
+            th:href="@{/transactions}"
+            class="inline-flex items-center gap-1.5 rounded-xl bg-brand px-3.5 py-2 text-xs font-semibold text-brand-fg self-start shrink-0"
+          >
+            <span>Teach Classifier on Transactions &rarr;</span>
+          </a>
+        </section>
+      </div>
+
+    </main>
+
+    <nav th:replace="~{fragments/layout :: mobileNav('intelligence')}"></nav>
+  </div>
+
+</body>
+</html>

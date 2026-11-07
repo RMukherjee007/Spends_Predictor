@@ -23,6 +23,8 @@ import java.nio.charset.StandardCharsets;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -756,6 +758,17 @@ public class FinanceService {
         req.put("transactions", dbTxns);
 
         Map<String, Object> report = invokePythonMlCli("insights", req);
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> recurringBills = (List<Map<String, Object>>) report.get("recurring_bills");
+        Map<String, Object> javaRunway = QuantCoreKernel.computeCashflowRunway(
+            dbTxns,
+            recurringBills,
+            liquidBalance,
+            user.baseCurrency(),
+            LocalDate.now(ZoneOffset.UTC)
+        );
+        report.put("runway", javaRunway);
 
         VerificationResult audit = LedgerSecurityVerifier.verifyLedger(toVerifierRecords(dbTxns));
         List<String> storedRoots = jdbc.queryForList(

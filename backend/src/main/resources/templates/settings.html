@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('Settings')}"></head>
+<body class="min-h-dvh bg-bg text-fg flex flex-col md:flex-row">
+
+  <aside th:replace="~{fragments/layout :: sidebar('settings', ${user})}"></aside>
+
+  <div class="flex-1 flex flex-col min-w-0">
+    <header th:replace="~{fragments/layout :: mobileHeader}"></header>
+
+    <main class="flex-1 mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 md:py-10 pb-24 md:pb-10">
+      <div class="max-w-xl space-y-6">
+        <div>
+          <h1 class="text-xl font-semibold tracking-tight">Account &amp; Regional Settings</h1>
+          <p class="text-xs text-muted">
+            Choose the base currency and timezone used for your spend forecasts and monthly budgets.
+          </p>
+        </div>
+
+        <form
+          th:action="@{/ui/settings}"
+          method="post"
+          class="rounded-2xl border border-line bg-surface p-6 space-y-5"
+        >
+          <div
+            th:if="${statusMessage != null}"
+            role="status"
+            th:class="${statusError} ? 'flex items-center gap-2 rounded-xl border border-negative text-negative px-3.5 py-2.5 text-sm' : 'flex items-center gap-2 rounded-xl border border-positive text-positive px-3.5 py-2.5 text-sm'"
+          >
+            <span th:text="${statusMessage}">Preferences saved.</span>
+          </div>
+
+          <div class="space-y-1.5">
+            <label for="settings-name" class="block text-xs font-medium text-fg">
+              Full name
+            </label>
+            <input
+              id="settings-name"
+              name="full_name"
+              type="text"
+              autocomplete="name"
+              th:value="${user.fullName() != null ? user.fullName() : ''}"
+              class="w-full rounded-xl border border-line-strong bg-bg px-3.5 py-2.5 text-sm text-fg"
+            />
+          </div>
+
+          <div class="space-y-1.5">
+            <label for="settings-currency" class="block text-xs font-medium text-fg">
+              Base currency (ISO-4217)
+            </label>
+            <select
+              id="settings-currency"
+              name="base_currency"
+              class="w-full rounded-xl border border-line-strong bg-bg px-3.5 py-2.5 text-sm text-fg"
+            >
+              <option
+                th:each="c : ${currencies}"
+                th:value="${c.code()}"
+                th:selected="${user.baseCurrency() == c.code()}"
+                th:text="${c.code()} + ' (' + ${c.minorUnits()} + ' decimal digits)'"
+              >
+                INR (2 decimal digits)
+              </option>
+            </select>
+          </div>
+
+          <div class="space-y-1.5">
+            <label for="settings-timezone" class="block text-xs font-medium text-fg">
+              Timezone
+            </label>
+            <select
+              id="settings-timezone"
+              name="timezone"
+              class="w-full rounded-xl border border-line-strong bg-bg px-3.5 py-2.5 text-sm text-fg"
+            >
+              <option
+                th:each="tz : ${timezones}"
+                th:value="${tz}"
+                th:selected="${user.timezone() == tz}"
+                th:text="${tz}"
+              >
+                Asia/Kolkata
+              </option>
+            </select>
+          </div>
+
+          <button
+            type="submit"
+            class="rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-brand-fg hover:opacity-95 cursor-pointer"
+          >
+            Save preferences
+          </button>
+        </form>
+      </div>
+    </main>
+
+    <nav th:replace="~{fragments/layout :: mobileNav('settings')}"></nav>
+  </div>
+
+</body>
+</html>

@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="en" xmlns:th="http://www.thymeleaf.org">
+<head th:replace="~{fragments/layout :: head('Cashflow & Spend Forecast')}"></head>
+<body class="min-h-dvh bg-bg text-fg flex flex-col md:flex-row">
+
+  <aside th:replace="~{fragments/layout :: sidebar('dashboard', ${user})}"></aside>
+
+  <div class="flex-1 flex flex-col min-w-0">
+    <header th:replace="~{fragments/layout :: mobileHeader}"></header>
+
+    <main class="flex-1 mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 md:py-10 pb-24 md:pb-10">
+      <div class="space-y-8">
+        <!-- Header -->
+        <header class="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p class="text-xs font-medium uppercase tracking-wider text-muted">
+              Welcome back<span th:if="${user.fullName() != null}" th:text="', ' + ${user.fullName()}"></span>
+            </p>
+            <h1 class="font-semibold tracking-tight text-fg text-2xl sm:text-3xl">
+              Cashflow &amp; Spend Forecast
+            </h1>
+          </div>
+
+          <div class="flex items-center gap-2">
+            <form th:if="${accounts.isEmpty()}" th:action="@{/ui/accounts/sync}" method="post">
+              <input type="hidden" name="redirect" value="/" />
+              <button
+                type="submit"
+                class="inline-flex items-center gap-1.5 rounded-xl bg-brand px-3.5 py-2 text-xs font-semibold text-brand-fg hover:opacity-90 transition cursor-pointer"
+              >
+                <span>Sync Sandbox Data</span>
+              </button>
+            </form>
+
+            <a
+              th:href="@{/settings}"
+              class="inline-flex items-center gap-1.5 self-start rounded-xl border border-line-strong bg-surface px-3.5 py-2 text-xs font-medium text-fg hover:bg-surface-muted transition-colors"
+            >
+              <span th:text="'Base currency: ' + ${currency}">Base currency: INR</span>
+              <span>&nearr;</span>
+            </a>
+          </div>
+        </header>
+
+        <!-- Verified Java 21 QuantCore and OpenJDK Audit Status Bar -->
+        <section
+          th:if="${runway != null and javaAudit != null}"
+          aria-label="Engine status"
+          class="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-line bg-surface p-3.5 px-5 text-xs text-muted"
+        >
+          <div class="flex flex-wrap items-center gap-4">
+            <span class="flex items-center gap-1.5 text-fg font-medium">
+              <span class="text-brand font-bold">&bull;</span>
+              <span th:text="${runway.get('mc_engine')} + ' (' + ${#numbers.formatDecimal(runway.get('mc_execution_time_us') / 1000.0, 1, 2)} + ' ms)'">
+                Java 21 In-JVM QuantCore (0.45 ms)
+              </span>
+            </span>
+            <span class="hidden sm:inline">&bull;</span>
+            <span
+              th:class="${javaAudit.get('is_valid')} ? 'flex items-center gap-1.5 font-medium text-positive' : 'flex items-center gap-1.5 font-medium text-danger'"
+            >
+              <span th:text="${javaAudit.get('is_valid')} ? 'Java OpenJDK Audit Seal Verified (0 Float Drift)' : 'Ledger Audit Seal Mismatch — Tampering Detected'">
+                Java OpenJDK Audit Seal Verified (0 Float Drift)
+              </span>
+            </span>
+          </div>
+
+          <a
+            th:href="@{/intelligence}"
+            class="inline-flex items-center gap-1 text-xs font-semibold text-brand hover:underline"
+          >
+            <span>Open ML Dashboard &rarr;</span>
+          </a>
+        </section>
+
+        <!-- Honest Empty-State Prompt when no accounts/transactions exist -->
+        <section
+          th:if="${!hasLedgerData}"
+          aria-label="Get started"
+          class="rounded-2xl border border-dashed border-line-strong bg-surface p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+        >
+          <div class="space-y-1">
+            <h2 class="text-sm font-semibold text-fg">No transactions in your ledger yet</h2>
+            <p class="text-xs text-muted">
+              Sync sandbox bank accounts or import a CSV statement to compute spending forecasts, recurring bill alerts, and cashflow runway.
+            </p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2.5">
+            <form th:action="@{/ui/accounts/sync}" method="post">
+              <input type="hidden" name="redirect" value="/" />
+              <button
+                type="submit"
+                class="inline-flex items-center gap-1.5 rounded-xl bg-brand px-3.5 py-2 text-xs font-semibold text-brand-fg hover:opacity-90 transition cursor-pointer"
+              >
+                <span>Sync Sandbox Data</span>
+              </button>
+            </form>
+            <a
+              th:href="@{/transactions}"
+              class="inline-flex items-center gap-1.5 rounded-xl border border-line-strong bg-bg px-3.5 py-2 text-xs font-semibold text-fg hover:bg-surface-muted transition"
+            >
+              <span>Import CSV</span>
+            </a>
+          </div>
+        </section>
+
+        <!-- Forecast Summary Cards -->
+        <section aria-label="Forecast summary" class="@container">
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <article class="rounded-2xl border border-line bg-surface p-5 space-y-2">
+              <div class="flex items-center justify-between text-xs text-muted">
+                <span>Projected month-end spend (P50)</span>
+              </div>
+              <p class="text-2xl font-bold tracking-tight tabular text-fg" th:text="${fmt.format(projectedMonthSpend)}">
+                ₹0.00
+              </p>
+              <p class="text-xs text-muted flex items-center justify-between">
+                <span th:text="'P10: ' + ${fmt.format(forecastP10)}">P10: ₹0.00</span>
+                <span th:text="'P90: ' + ${fmt.format(forecastP90)}">P90: ₹0.00</span>
+              </p>
+            </article>
+
+            <article class="rounded-2xl border border-line bg-surface p-5 space-y-2">
+              <div class="flex items-center justify-between text-xs text-muted">
+                <span>Spent so far this month</span>
+              </div>
+              <p class="text-2xl font-bold tracking-tight tabular text-fg" th:text="${fmt.format(spentSoFar)}">
+                ₹0.00
+              </p>
+              <p class="text-xs text-muted" th:text="'Burn velocity: ~' + ${fmt.format(dailyVelocity)} + ' / day'">
+                Burn velocity: ~₹0.00 / day
+              </p>
+            </article>
+
+            <article class="rounded-2xl border border-line bg-surface p-5 space-y-2">
+              <div class="flex items-center justify-between text-xs text-muted">
+                <span>Upcoming recurring bills</span>
+              </div>
+              <p class="text-2xl font-bold tracking-tight tabular text-fg" th:text="${fmt.format(upcomingRecurring)}">
+                ₹0.00
+              </p>
+              <p class="text-xs text-muted" th:text="${recurringBills.size()} + ' active recurring debits'">
+                0 active recurring debits
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <!-- Action Alerts: Price hikes & Anomalies -->
+        <section
+          th:if="${!hikeAlerts.isEmpty() or !highSeverityAnomalies.isEmpty()}"
+          aria-label="Important Alerts"
+          class="grid grid-cols-1 md:grid-cols-2 gap-4"
+        >
+          <div th:if="${!hikeAlerts.isEmpty()}" class="rounded-2xl border border-danger/30 bg-danger/5 p-5 space-y-2">
+            <div class="flex items-center gap-2 text-danger font-semibold text-xs uppercase tracking-wider">
+              <span>Silent Price Hike Detected</span>
+            </div>
+            <p class="text-xs text-fg leading-relaxed">
+              <strong th:text="${hikeAlerts.get(0).get('merchant_name')}">Merchant</strong> billed
+              <span th:text="${fmt.format(hikeAlerts.get(0).get('latest_amount_minor'))}">₹0</span>, a
+              <strong th:text="'+' + ${#numbers.formatDecimal(hikeAlerts.get(0).get('price_creep_pct'), 1, 1)} + '% jump'">+10.0% jump</strong>
+              over baseline.
+            </p>
+            <a th:href="@{/intelligence(tab='recurring')}" class="inline-flex items-center gap-1 text-xs font-semibold text-danger hover:underline pt-1">
+              <span>Inspect in ML Intelligence &rarr;</span>
+            </a>
+          </div>
+
+          <div th:if="${!highSeverityAnomalies.isEmpty()}" class="rounded-2xl border border-warning/30 bg-warning/5 p-5 space-y-2">
+            <div class="flex items-center gap-2 text-warning font-semibold text-xs uppercase tracking-wider">
+              <span>High-Severity Spending Anomaly</span>
+            </div>
+            <p class="text-xs text-fg leading-relaxed">
+              <strong th:text="${highSeverityAnomalies.get(0).get('merchant_name')}">Merchant</strong>
+              (<span th:text="${fmt.format(highSeverityAnomalies.get(0).get('amount_base_minor'))}">₹0</span>):
+              <span th:text="${highSeverityAnomalies.get(0).get('reason')}">Reason</span>
+            </p>
+            <a th:href="@{/intelligence(tab='anomalies')}" class="inline-flex items-center gap-1 text-xs font-semibold text-warning hover:underline pt-1">
+              <span>Review Outlier Details &rarr;</span>
+            </a>
+          </div>
+        </section>
+
+        <!-- Quick Access Grid -->
+        <section aria-labelledby="quick-access-heading" class="space-y-4">
+          <h2 id="quick-access-heading" class="text-base font-semibold tracking-tight">
+            Application Cockpit
+          </h2>
+
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <a
+              th:href="@{/intelligence}"
+              class="rounded-2xl border border-line bg-surface p-5 space-y-2 hover:border-line-strong hover:bg-surface-muted/40 transition group"
+            >
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold uppercase tracking-wider text-brand">ML Engine</span>
+                <span class="text-muted group-hover:text-fg transition">&rarr;</span>
+              </div>
+              <h3 class="text-sm font-semibold tracking-tight text-fg">7-Pillar ML Intelligence</h3>
+              <p class="text-xs text-muted">
+                Probabilistic quantiles, MinT hierarchical reconciliation, Java 21 Monte Carlo runway, and SHAP feature attributions.
+              </p>
+            </a>
+
+            <a
+              th:href="@{/transactions}"
+              class="rounded-2xl border border-line bg-surface p-5 space-y-2 hover:border-line-strong hover:bg-surface-muted/40 transition group"
+            >
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold uppercase tracking-wider text-muted">Ledger</span>
+                <span class="text-muted group-hover:text-fg transition">&rarr;</span>
+              </div>
+              <h3 class="text-sm font-semibold tracking-tight text-fg">Ledger Transactions</h3>
+              <p class="text-xs text-muted">
+                Search, filter, import bank statement CSVs, and train the active learning classifier in real time.
+              </p>
+            </a>
+
+            <a
+              th:href="@{/accounts}"
+              class="rounded-2xl border border-line bg-surface p-5 space-y-2 hover:border-line-strong hover:bg-surface-muted/40 transition group"
+            >
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-semibold uppercase tracking-wider text-muted">Institutions</span>
+                <span class="text-muted group-hover:text-fg transition">&rarr;</span>
+              </div>
+              <h3 class="text-sm font-semibold tracking-tight text-fg">Connected Accounts</h3>
+              <p class="text-xs text-muted" th:text="${accounts.size()} + ' institution(s) linked. Manage multi-currency balances and trigger sandbox synchronization.'">
+                0 institutions linked.
+              </p>
+            </a>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <nav th:replace="~{fragments/layout :: mobileNav('dashboard')}"></nav>
+  </div>
+
+</body>
+</html>

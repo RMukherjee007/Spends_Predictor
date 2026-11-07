@@ -7,7 +7,6 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    g++ \
     maven \
     python3 \
     python3-pip \
@@ -24,8 +23,7 @@ COPY pom.xml ./
 COPY src ./src
 COPY app ./app
 
-RUN g++ -std=c++20 -O3 -shared -fPIC app/native/quantcore.cpp -o app/native/libquantcore.so \
-    && mvn -B -DskipTests package \
+RUN mvn -B -DskipTests package \
     && chown -R appuser:appuser /app
 
 USER appuser
