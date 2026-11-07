@@ -1,82 +1,8 @@
 from __future__ import annotations
 
-import uuid
-from datetime import datetime
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
-
-
-class BankAccountRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: uuid.UUID
-    name: str
-    institution: str
-    account_type: str
-    currency: str
-    balance_minor: int
-    balance_base_minor: int = 0
-    masked_number: str | None
-    provider: str
-    last_synced_at: datetime | None
-    created_at: datetime
-
-
-class TransactionRead(BaseModel):
-    model_config = ConfigDict(from_attributes=True)
-
-    id: uuid.UUID
-    account_id: uuid.UUID
-    occurred_at: datetime
-    direction: str
-    amount_minor: int
-    currency: str
-    amount_base_minor: int
-    fx_rate: float
-    merchant_name: str
-    category: str
-    category_source: str
-    category_confidence: float
-    is_recurring: bool
-    is_anomaly: bool
-    anomaly_score: float
-    anomaly_reason: str | None
-
-
-CategoryType = Literal[
-    "dining",
-    "groceries",
-    "rent",
-    "utilities",
-    "transport",
-    "shopping",
-    "subscriptions",
-    "healthcare",
-    "travel",
-    "entertainment",
-    "investments",
-    "salary",
-    "other",
-]
-
-
-class TransactionUpdateCategory(BaseModel):
-    category: CategoryType
-    apply_to_future: bool = True
-
-
-class CsvImportRequest(BaseModel):
-    account_id: uuid.UUID | None = None
-    csv_content: str = Field(min_length=1, max_length=25_000)
-
-
-class CsvImportResponse(BaseModel):
-    imported_count: int
-    skipped_count: int
-
-
-# --- ML Insights Schemas ---
+from pydantic import BaseModel
 
 
 class CategoryForecastSchema(BaseModel):

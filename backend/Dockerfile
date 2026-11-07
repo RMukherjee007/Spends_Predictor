@@ -1,4 +1,4 @@
-FROM python:3.13-slim AS base
+FROM eclipse-temurin:21-jdk-jammy AS base
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
@@ -8,23 +8,28 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     g++ \
-    default-jdk-headless \
+    maven \
+    python3 \
+    python3-pip \
+    python3-venv \
     && rm -rf /var/lib/apt/lists/* \
     && adduser --disabled-password --gecos "" appuser
 
-COPY requirements.txt ./
-RUN pip install --upgrade pip && pip install -r requirements.txt
+COPY requirements.in ./
+RUN python3 -m venv /app/.venv \
+    && /app/.venv/bin/pip install --upgrade pip \
+    && /app/.venv/bin/pip install -r requirements.in
 
-COPY alembic.ini ./
-COPY alembic ./alembic
+COPY pom.xml ./
+COPY src ./src
 COPY app ./app
 
 RUN g++ -std=c++20 -O3 -shared -fPIC app/native/quantcore.cpp -o app/native/libquantcore.so \
-    && javac app/java_verifier/LedgerSecurityVerifier.java \
+    && mvn -B -DskipTests package \
     && chown -R appuser:appuser /app
 
 USER appuser
 
 EXPOSE 8000
 
-CMD ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000}"]
+CMD ["sh", "-c", "java -Dserver.port=${PORT:-8000} -jar target/spends-predictor-api-0.2.0.jar"]

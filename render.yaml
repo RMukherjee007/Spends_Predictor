@@ -1,9 +1,8 @@
 # Render Blueprint (https://render.com/docs/blueprint-spec)
 # Deploys the entire stack on Render's free tier:
-# 1. PostgreSQL database
-# 2. Key-Value (Redis-compatible) instance
-# 3. FastAPI backend web service
-# 4. React static site with /api/* rewrite so auth cookies remain first-party
+# 1. PostgreSQL database (also backs distributed rate limiting & token revocation)
+# 2. Java 21+ Spring Boot 3 + Python ML + C++20 backend web service
+# 3. React static site with /api/* rewrite so auth cookies remain first-party
 
 databases:
   - name: spends-predictor-db
@@ -12,11 +11,6 @@ databases:
     plan: free
 
 services:
-  - type: keyvalue
-    name: spends-predictor-redis
-    plan: free
-    ipAllowList: []
-
   - type: web
     name: spends-predictor-api
     runtime: docker
@@ -35,19 +29,12 @@ services:
       - key: JWT_SECRET
         generateValue: true
       - key: FIELD_ENCRYPTION_KEYS
-        sync: false # Set in Render dashboard using: python -m app.scripts.generate_key
-      - key: GOOGLE_CLIENT_IDS
-        sync: false # Set your Google OAuth Client ID(s) in Render dashboard
-      - key: SENTRY_DSN
         sync: false
-      - key: DATABASE_URL
+      - key: GOOGLE_CLIENT_IDS
+        sync: false
+      - key: SPRING_DATASOURCE_URL
         fromDatabase:
           name: spends-predictor-db
-          property: connectionString
-      - key: REDIS_URL
-        fromService:
-          type: keyvalue
-          name: spends-predictor-redis
           property: connectionString
 
   - type: web
@@ -62,8 +49,6 @@ services:
       - key: VITE_DEV_LOGIN
         value: "false"
       - key: VITE_GOOGLE_CLIENT_ID
-        sync: false
-      - key: VITE_SENTRY_DSN
         sync: false
     routes:
       - type: rewrite

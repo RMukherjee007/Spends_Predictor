@@ -159,7 +159,7 @@ export function AccountsPage() {
               <span>Ledger Security &amp; Encryption</span>
               <ShieldCheck className="h-4 w-4 text-positive" aria-hidden="true" />
             </div>
-            <p className="text-2xl font-semibold tracking-tight">AES-128-CBC</p>
+            <p className="text-2xl font-semibold tracking-tight">AES-256-GCM</p>
             <p className="text-xs text-positive">Masked numbers encrypted at rest</p>
           </article>
         </div>

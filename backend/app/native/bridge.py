@@ -36,32 +36,40 @@ class CppMonteCarloResult:
     n_simulations: int
 
 
+def ensure_quantcore_compiled() -> bool:
+    """Compile quantcore.cpp into a native shared library at build or worker startup time."""
+    if _LIB_PATH.exists() and (
+        not _CPP_SRC.exists() or _LIB_PATH.stat().st_mtime >= _CPP_SRC.stat().st_mtime
+    ):
+        return True
+    compiler = shutil.which("clang++") or shutil.which("g++")
+    if not compiler or not _CPP_SRC.exists():
+        return _LIB_PATH.exists()
+    try:
+        subprocess.run(
+            [
+                compiler,
+                "-std=c++20",
+                "-O3",
+                "-shared",
+                "-fPIC",
+                str(_CPP_SRC),
+                "-o",
+                str(_LIB_PATH),
+            ],
+            check=True,
+            capture_output=True,
+            timeout=20,
+        )
+        return True
+    except Exception:
+        return _LIB_PATH.exists()
+
+
 @lru_cache(maxsize=1)
 def _load_quantcore() -> ctypes.CDLL | None:
-    if not _LIB_PATH.exists() or (
-        _CPP_SRC.exists() and _CPP_SRC.stat().st_mtime > _LIB_PATH.stat().st_mtime
-    ):
-        compiler = shutil.which("clang++") or shutil.which("g++")
-        if compiler and _CPP_SRC.exists():
-            try:
-                subprocess.run(
-                    [
-                        compiler,
-                        "-std=c++20",
-                        "-O3",
-                        "-shared",
-                        "-fPIC",
-                        str(_CPP_SRC),
-                        "-o",
-                        str(_LIB_PATH),
-                    ],
-                    check=True,
-                    capture_output=True,
-                    timeout=20,
-                )
-            except Exception:
-                return None
-
+    if not _LIB_PATH.exists():
+        ensure_quantcore_compiled()
     if not _LIB_PATH.exists():
         return None
 

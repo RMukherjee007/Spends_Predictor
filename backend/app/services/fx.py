@@ -82,10 +82,10 @@ def convert_minor_units(
     if src == dst:
         return amount_minor, 1.0
 
-    rate = get_fx_rate(src, dst)
+    rate = round(get_fx_rate(src, dst), 10)
     src_digits = minor_units(src)
     dst_digits = minor_units(dst)
     major_amount = amount_minor / (10**src_digits)
     converted_major = major_amount * rate
     converted_minor = round(converted_major * (10**dst_digits))
-    return int(converted_minor), round(rate, 6)
+    return int(converted_minor), rate

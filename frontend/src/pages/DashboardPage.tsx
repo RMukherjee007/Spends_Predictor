@@ -53,9 +53,13 @@ export function DashboardPage() {
     setSyncing(false)
   }
 
-  const projectedMonthSpend = insights?.forecast_p50_minor ?? 4825000
-  const spentSoFar = insights?.spent_this_month_minor ?? 3140000
-  const upcomingRecurring = insights?.remaining_recurring_minor ?? 649900
+  const projectedMonthSpend = insights?.forecast_p50_minor ?? 0
+  const spentSoFar = insights?.spent_this_month_minor ?? 0
+  const upcomingRecurring = insights?.remaining_recurring_minor ?? 0
+  const hasLedgerData =
+    accounts.length > 0 ||
+    (insights?.java_audit != null &&
+      insights.java_audit.verified_debit_count + insights.java_audit.verified_credit_count > 0)
 
   const hikeAlerts = insights?.recurring_bills?.filter((b) => b.has_price_hike) ?? []
   const highSeverityAnomalies =
@@ -109,12 +113,22 @@ export function DashboardPage() {
           <div className="flex flex-wrap items-center gap-4">
             <span className="flex items-center gap-1.5 text-fg font-medium">
               <Cpu className="h-4 w-4 text-brand" aria-hidden="true" />
-              <span>C++20 SIMD Native Kernel ({(insights.runway.mc_execution_time_us / 1000).toFixed(2)} ms)</span>
+              <span>
+                {insights.runway.mc_engine} ({(insights.runway.mc_execution_time_us / 1000).toFixed(2)} ms)
+              </span>
             </span>
             <span className="hidden sm:inline">&bull;</span>
-            <span className="flex items-center gap-1.5 text-positive font-medium">
+            <span
+              className={`flex items-center gap-1.5 font-medium ${
+                insights.java_audit.is_valid ? 'text-positive' : 'text-danger'
+              }`}
+            >
               <Lock className="h-4 w-4" aria-hidden="true" />
-              <span>Java OpenJDK 26 Audit Seal Verified (0 Float Drift)</span>
+              <span>
+                {insights.java_audit.is_valid
+                  ? 'Java OpenJDK Audit Seal Verified (0 Float Drift)'
+                  : 'Ledger Audit Seal Mismatch — Tampering Detected'}
+              </span>
             </span>
           </div>
 
@@ -128,7 +142,38 @@ export function DashboardPage() {
         </section>
       )}
 
-      {/* Container-query responsive metric grid */}
+      {/* Honest Empty-State Prompt when no accounts/transactions exist */}
+      {!loading && !hasLedgerData && (
+        <section
+          aria-label="Get started"
+          className="rounded-2xl border border-dashed border-line-strong bg-surface p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4"
+        >
+          <div className="space-y-1">
+            <h2 className="text-sm font-semibold text-fg">No transactions in your ledger yet</h2>
+            <p className="text-xs text-muted">
+              Sync sandbox bank accounts or import a CSV statement to compute spending forecasts, recurring bill alerts, and cashflow runway.
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-2.5">
+            <button
+              type="button"
+              onClick={() => void handleQuickSync()}
+              disabled={syncing}
+              className="inline-flex items-center gap-1.5 rounded-xl bg-brand px-3.5 py-2 text-xs font-semibold text-brand-fg hover:opacity-90 disabled:opacity-50 transition"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${syncing ? 'animate-spin' : ''}`} aria-hidden="true" />
+              <span>{syncing ? 'Syncing…' : 'Sync Sandbox Data'}</span>
+            </button>
+            <Link
+              to="/transactions"
+              className="inline-flex items-center gap-1.5 rounded-xl border border-line-strong bg-bg px-3.5 py-2 text-xs font-semibold text-fg hover:bg-surface-muted transition"
+            >
+              <span>Import CSV</span>
+            </Link>
+          </div>
+        </section>
+      )}
+
       <section aria-label="Forecast summary" className="@container">
         <div className="grid grid-cols-1 @min-[640px]:grid-cols-3 gap-4">
           <article className="rounded-2xl border border-line bg-surface p-5 space-y-2">

@@ -1,10 +1,18 @@
-// High-Performance C++20 Quantitative Finance & Statistical Kernel for Spends Predictor.
+// High-Performance C++20 SIMD Quantitative Finance & Statistical Kernel for Spends Predictor.
 // Compiled with: clang++ -std=c++20 -O3 -shared -fPIC quantcore.cpp -o libquantcore.dylib
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <vector>
+
+#if defined(__aarch64__) && defined(__ARM_NEON)
+#include <arm_neon.h>
+#define SPENDS_SIMD_NEON 1
+#elif defined(__x86_64__) && defined(__SSE2__)
+#include <emmintrin.h>
+#define SPENDS_SIMD_SSE2 1
+#endif
 
 namespace {
 
@@ -35,7 +43,6 @@ extern "C" {
 
 // 1. Exact Closed-Form Bachelier-Wald Brownian Motion with Drift First-Passage Barrier Probability:
 //    P(min_{0 <= t <= T} B_t <= B_safe) where dB_t = mu * dt + sigma * dW_t, B_0 > B_safe.
-//    Note: mu is net daily balance change (inflow - outflow), so usually mu < 0 between paydays.
 double cpp_wald_first_passage_prob(
     double current_balance,
     double safe_threshold,
@@ -57,7 +64,6 @@ double cpp_wald_first_passage_prob(
     const double z2 = (-barrier_dist + daily_net_drift * horizon_days) / denom;
 
     const double term1 = normal_cdf(z1);
-    // Exponent for reflection term: -2 * mu * b / sigma^2
     const double exp_arg = std::clamp(
         (-2.0 * daily_net_drift * barrier_dist) / (daily_volatility * daily_volatility),
         -60.0,
@@ -67,14 +73,14 @@ double cpp_wald_first_passage_prob(
     return std::clamp(term1 + term2, 0.0, 1.0);
 }
 
-// 2. High-Speed Native C++20 Monte Carlo Cashflow Runway Simulator (e.g. 10,000 paths x 30 days)
-//    Writes p10, p50, p90 balance arrays (length = horizon_days + 1) and returns hazard probability [0..1].
+// 2. High-Speed Native C++20 SIMD Monte Carlo Cashflow Runway Simulator (10,000 paths x 30 days)
+//    Uses ARM64 NEON (float64x2_t) or x86_64 SSE2 (__m128d) SIMD vector intrinsics across path pairs.
 double cpp_monte_carlo_runway(
     int64_t initial_balance,
     int64_t safe_threshold,
     const double* daily_disc_pool,
     int32_t pool_size,
-    const double* net_scheduled_by_day,  // length = horizon_days (inflow - scheduled_bills for days 1..H)
+    const double* net_scheduled_by_day,
     int32_t horizon_days,
     int32_t days_to_payday,
     int32_t n_sims,
@@ -99,17 +105,55 @@ double cpp_monte_carlo_runway(
     const size_t idx10 = static_cast<size_t>(0.10 * (n_sims - 1));
     const size_t idx50 = static_cast<size_t>(0.50 * (n_sims - 1));
     const size_t idx90 = static_cast<size_t>(0.90 * (n_sims - 1));
+    const double safe_thresh_d = static_cast<double>(safe_threshold);
 
     for (int32_t day = 1; day <= horizon_days; ++day) {
         const double net_sched = net_scheduled_by_day[day - 1];
         const bool check_hazard = (day <= days_to_payday);
 
-        for (int32_t s = 0; s < n_sims; ++s) {
+        int32_t s = 0;
+#if defined(SPENDS_SIMD_NEON)
+        const float64x2_t v_sched = vdupq_n_f64(net_sched);
+        const float64x2_t v_thresh = vdupq_n_f64(safe_thresh_d);
+        for (; s + 1 < n_sims; s += 2) {
+            const double sp0 = daily_disc_pool[rng.next_index(static_cast<size_t>(pool_size))];
+            const double sp1 = daily_disc_pool[rng.next_index(static_cast<size_t>(pool_size))];
+            const double sp_pair[2] = {sp0, sp1};
+            const float64x2_t v_spend = vld1q_f64(sp_pair);
+            const float64x2_t v_cur = vld1q_f64(&current_balances[static_cast<size_t>(s)]);
+            const float64x2_t v_next = vsubq_f64(vaddq_f64(v_cur, v_sched), v_spend);
+            vst1q_f64(&current_balances[static_cast<size_t>(s)], v_next);
+            vst1q_f64(&sorted_col[static_cast<size_t>(s)], v_next);
+            if (check_hazard) {
+                const uint64x2_t v_cmp = vcltq_f64(v_next, v_thresh);
+                if (vgetq_lane_u64(v_cmp, 0) != 0ULL) breached[static_cast<size_t>(s)] = 1;
+                if (vgetq_lane_u64(v_cmp, 1) != 0ULL) breached[static_cast<size_t>(s + 1)] = 1;
+            }
+        }
+#elif defined(SPENDS_SIMD_SSE2)
+        const __m128d v_sched = _mm_set1_pd(net_sched);
+        const __m128d v_thresh = _mm_set1_pd(safe_thresh_d);
+        for (; s + 1 < n_sims; s += 2) {
+            const double sp0 = daily_disc_pool[rng.next_index(static_cast<size_t>(pool_size))];
+            const double sp1 = daily_disc_pool[rng.next_index(static_cast<size_t>(pool_size))];
+            const __m128d v_spend = _mm_set_pd(sp1, sp0);
+            const __m128d v_cur = _mm_loadu_pd(&current_balances[static_cast<size_t>(s)]);
+            const __m128d v_next = _mm_sub_pd(_mm_add_pd(v_cur, v_sched), v_spend);
+            _mm_storeu_pd(&current_balances[static_cast<size_t>(s)], v_next);
+            _mm_storeu_pd(&sorted_col[static_cast<size_t>(s)], v_next);
+            if (check_hazard) {
+                const int mask = _mm_movemask_pd(_mm_cmplt_pd(v_next, v_thresh));
+                if (mask & 1) breached[static_cast<size_t>(s)] = 1;
+                if (mask & 2) breached[static_cast<size_t>(s + 1)] = 1;
+            }
+        }
+#endif
+        for (; s < n_sims; ++s) {
             const double sampled_spend = daily_disc_pool[rng.next_index(static_cast<size_t>(pool_size))];
             const double next_bal = current_balances[static_cast<size_t>(s)] + net_sched - sampled_spend;
             current_balances[static_cast<size_t>(s)] = next_bal;
             sorted_col[static_cast<size_t>(s)] = next_bal;
-            if (check_hazard && next_bal < static_cast<double>(safe_threshold)) {
+            if (check_hazard && next_bal < safe_thresh_d) {
                 breached[static_cast<size_t>(s)] = 1;
             }
         }
@@ -134,8 +178,6 @@ double cpp_monte_carlo_runway(
 }
 
 // 3. Exact Closed-Form MinT (Minimum Trace) Optimal Hierarchical Reconciliation:
-//    Given bottom-level category forecasts y_hat[i] with variances var_b[i] and top-level
-//    forecast y_top with variance var_top, reconciles y_tilde[i] so sum(y_tilde) == y_reconciled_total.
 int64_t cpp_mint_reconcile(
     const double* y_hat,
     const double* var_b,

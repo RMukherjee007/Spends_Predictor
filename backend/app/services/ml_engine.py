@@ -17,9 +17,10 @@ Implements:
 from __future__ import annotations
 
 import calendar
+import hashlib
 import math
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 
 import numpy as np
@@ -30,50 +31,27 @@ from sklearn.linear_model import Ridge
 from sklearn.metrics import silhouette_score
 from sklearn.preprocessing import StandardScaler
 
-from app.java_verifier.bridge import verify_financial_ledger
 from app.native.bridge import (
     cpp_mint_reconcile_forecasts,
     cpp_page_cusum_stat,
+    is_cpp_kernel_active,
     run_cpp_monte_carlo_runway,
 )
 from app.schemas.finance import (
-    AnomalySchema as AnomalyItem,
-)
-from app.schemas.finance import (
-    BacktestPointSchema as BacktestPoint,
-)
-from app.schemas.finance import (
-    CashflowRunwaySchema as CashflowRunwayReport,
-)
-from app.schemas.finance import (
-    CategoryForecastSchema as CategoryForecastItem,
-)
-from app.schemas.finance import (
-    ClusterSummarySchema as ClusterSummaryItem,
-)
-from app.schemas.finance import (
-    LifestyleCreepSchema as LifestyleCreepItem,
-)
-from app.schemas.finance import (
-    MLInsightsResponse as MLInsightsReport,
-)
-from app.schemas.finance import (
-    ModelComparisonSchema as ModelComparisonItem,
-)
-from app.schemas.finance import (
-    PcaSamplePointSchema as PcaSamplePoint,
-)
-from app.schemas.finance import (
-    RecurringBillSchema as RecurringBillItem,
-)
-from app.schemas.finance import (
-    RunwayPointSchema as RunwayPoint,
-)
-from app.schemas.finance import (
-    SavingsRecommendationSchema as SavingsRecommendationItem,
-)
-from app.schemas.finance import (
-    ShapAttributionSchema as ShapAttributionItem,
+    AnomalySchema,
+    BacktestPointSchema,
+    CashflowRunwaySchema,
+    CategoryForecastSchema,
+    ClusterSummarySchema,
+    JavaAuditSchema,
+    LifestyleCreepSchema,
+    MLInsightsResponse,
+    ModelComparisonSchema,
+    PcaSamplePointSchema,
+    RecurringBillSchema,
+    RunwayPointSchema,
+    SavingsRecommendationSchema,
+    ShapAttributionSchema,
 )
 from app.services.categorizer import get_global_classifier
 from app.services.fx import convert_minor_units
@@ -98,13 +76,46 @@ def _as_utc(dt: datetime) -> datetime:
     return dt if dt.tzinfo else dt.replace(tzinfo=UTC)
 
 
-def _detect_recurring_bills(debits: list[TxnRecord], now: datetime) -> list[RecurringBillItem]:
+def verify_financial_ledger(transactions: list[TxnRecord]) -> JavaAuditSchema:
+    """Compute baseline ledger totals and an RFC 6962 SHA-256 Merkle root (overridden in-JVM by Spring Boot)."""
+    debits = [t.amount_base_minor for t in transactions if t.direction == "debit"]
+    credits = [t.amount_base_minor for t in transactions if t.direction == "credit"]
+    leaves = [
+        hashlib.sha256(
+            b"\x00"
+            + f"{t.id}|{t.occurred_at.isoformat()}|{t.direction}|{t.amount_base_minor}|{t.currency}|{t.category}".encode()
+        ).digest()
+        for t in transactions
+    ]
+    level = leaves
+    while len(level) > 1:
+        level = [
+            hashlib.sha256(
+                b"\x01" + level[i] + (level[i + 1] if i + 1 < len(level) else level[i])
+            ).digest()
+            for i in range(0, len(level), 2)
+        ]
+    root_hex = level[0].hex() if level else ("0" * 64)
+    total_d, total_c = sum(debits), sum(credits)
+    return JavaAuditSchema(
+        is_valid=all(t.amount_base_minor >= 0 for t in transactions),
+        audit_seal_sha256=root_hex,
+        verified_debit_count=len(debits),
+        verified_credit_count=len(credits),
+        total_debits_minor=total_d,
+        total_credits_minor=total_c,
+        net_cashflow_minor=total_c - total_d,
+        verifier_engine="SHA-256 Merkle Tree Verifier",
+    )
+
+
+def _detect_recurring_bills(debits: list[TxnRecord], now: datetime) -> list[RecurringBillSchema]:
     """Group debits by canonical merchant and detect periodic inter-arrival cadence & price creep."""
     by_merchant: dict[str, list[TxnRecord]] = defaultdict(list)
     for t in debits:
         by_merchant[t.merchant_name].append(t)
 
-    items: list[RecurringBillItem] = []
+    items: list[RecurringBillSchema] = []
     for merchant, rows in by_merchant.items():
         if len(rows) < 3:
             continue
@@ -150,7 +161,7 @@ def _detect_recurring_bills(debits: list[TxnRecord], now: datetime) -> list[Recu
         conf = round(min(0.99, 0.65 + 0.34 * regularity), 2)
 
         items.append(
-            RecurringBillItem(
+            RecurringBillSchema(
                 merchant_name=merchant,
                 category=ordered[-1].category,
                 cadence=cadence,
@@ -168,7 +179,7 @@ def _detect_recurring_bills(debits: list[TxnRecord], now: datetime) -> list[Recu
     return items
 
 
-def _detect_anomalies(debits: list[TxnRecord]) -> list[AnomalyItem]:
+def _detect_anomalies(debits: list[TxnRecord]) -> list[AnomalySchema]:
     """Combine Contextual Robust MAD Z-Score per category with Multivariate IsolationForest."""
     if len(debits) < 12:
         return []
@@ -214,7 +225,7 @@ def _detect_anomalies(debits: list[TxnRecord]) -> list[AnomalyItem]:
     # decision_function < 0 indicates outlier; negate so higher = more anomalous
     raw_iso_scores = -iso.decision_function(x_scaled)
 
-    anomalies: list[AnomalyItem] = []
+    anomalies: list[AnomalySchema] = []
     for idx, t in enumerate(debits):
         rz = robust_zs[idx]
         iso_s = float(raw_iso_scores[idx])
@@ -228,7 +239,7 @@ def _detect_anomalies(debits: list[TxnRecord]) -> list[AnomalyItem]:
             if iso_s > 0.08:
                 reasons.append("multivariate IsolationForest outlier")
             anomalies.append(
-                AnomalyItem(
+                AnomalySchema(
                     transaction_id=t.id,
                     occurred_at=t.occurred_at.isoformat(),
                     merchant_name=t.merchant_name,
@@ -245,7 +256,7 @@ def _detect_anomalies(debits: list[TxnRecord]) -> list[AnomalyItem]:
     return anomalies[:8]
 
 
-def _detect_lifestyle_creep(debits: list[TxnRecord], now: datetime) -> list[LifestyleCreepItem]:
+def _detect_lifestyle_creep(debits: list[TxnRecord], now: datetime) -> list[LifestyleCreepSchema]:
     """CUSUM change-point & drift analysis on weekly discretionary category spend."""
     discretionary = {"dining", "shopping", "groceries", "transport", "entertainment"}
     # Bucket into 16 complete 7-day windows ending at `now`
@@ -261,7 +272,7 @@ def _detect_lifestyle_creep(debits: list[TxnRecord], now: datetime) -> list[Life
         if 0 <= wk < n_weeks:
             weekly[t.category][wk] += t.amount_base_minor
 
-    results: list[LifestyleCreepItem] = []
+    results: list[LifestyleCreepSchema] = []
     for cat, series in weekly.items():
         if sum(series) == 0:
             continue
@@ -285,7 +296,7 @@ def _detect_lifestyle_creep(debits: list[TxnRecord], now: datetime) -> list[Life
             status = "stable"
 
         results.append(
-            LifestyleCreepItem(
+            LifestyleCreepSchema(
                 category=cat,
                 early_weekly_avg_minor=round(early_mean),
                 recent_weekly_avg_minor=round(recent_mean),
@@ -301,7 +312,7 @@ def _detect_lifestyle_creep(debits: list[TxnRecord], now: datetime) -> list[Life
 
 def _compare_and_forecast_models(
     debits: list[TxnRecord],
-    recurring_bills: list[RecurringBillItem],
+    recurring_bills: list[RecurringBillSchema],
     now: datetime,
 ) -> tuple[
     int,
@@ -310,10 +321,10 @@ def _compare_and_forecast_models(
     int,
     int,
     int,
-    list[CategoryForecastItem],
+    list[CategoryForecastSchema],
     str,
-    list[ModelComparisonItem],
-    list[BacktestPoint],
+    list[ModelComparisonSchema],
+    list[BacktestPointSchema],
 ]:
     """Chronological backtesting + hierarchical probabilistic month-end spend forecast."""
     # Group debits by YYYY-MM
@@ -328,7 +339,7 @@ def _compare_and_forecast_models(
     past_months = sorted(m for m in by_month if m < current_ym)
 
     # Ensure at least 5 historical months for chronological train/val/test evaluation
-    backtest_points: list[BacktestPoint] = []
+    backtest_points: list[BacktestPointSchema] = []
     naive_errors: list[float] = []
     ets_errors: list[float] = []
     ml_errors: list[float] = []
@@ -367,7 +378,7 @@ def _compare_and_forecast_models(
                 ml_pred = 0.6 * ets_pred + 0.4 * naive_pred
 
             backtest_points.append(
-                BacktestPoint(
+                BacktestPointSchema(
                     month=m_label,
                     actual_minor=round(actual),
                     naive_pred_minor=round(naive_pred),
@@ -391,12 +402,9 @@ def _compare_and_forecast_models(
         mape = float(np.mean(pct_errs))
         wape = float(np.sum(err_arr) / max(1.0, float(np.sum(act_arr)))) * 100.0
         mae = round(float(np.mean(err_arr)))
-        # Bootstrap 95% CI on MAPE
+        # 1,000-sample vectorized bootstrap 95% CI on MAPE
         rng = np.random.default_rng(42)
-        boot = [
-            float(np.mean(rng.choice(pct_errs, size=len(pct_errs), replace=True)))
-            for _ in range(200)
-        ]
+        boot = np.mean(rng.choice(pct_errs, size=(1000, len(pct_errs)), replace=True), axis=1)
         ci_low = float(np.percentile(boot, 2.5))
         ci_high = float(np.percentile(boot, 97.5))
         return (
@@ -432,7 +440,7 @@ def _compare_and_forecast_models(
     best_idx = int(np.argmin([m[0] for m in raw_models]))
     selected_model = raw_models[best_idx][5]
     comparisons = [
-        ModelComparisonItem(
+        ModelComparisonSchema(
             model_name=m[5],
             mape_pct=m[0],
             wape_pct=m[1],
@@ -445,7 +453,6 @@ def _compare_and_forecast_models(
         for idx, m in enumerate(raw_models)
     ]
 
-    # --- Current Month Hierarchical Decomposed Forecast (MinT / Bottom-Up) ---
     days_in_month = calendar.monthrange(now.year, now.month)[1]
     days_elapsed = max(1, now.day)
     days_remaining = max(0, days_in_month - days_elapsed)
@@ -466,7 +473,7 @@ def _compare_and_forecast_models(
     fixed_categories = {"rent", "investments"}
     all_cats = sorted({t.category for t in debits if t.category != "salary"})
 
-    cat_forecasts: list[CategoryForecastItem] = []
+    cat_forecasts: list[CategoryForecastSchema] = []
     total_p10 = 0
     total_p50 = 0
     total_p90 = 0
@@ -501,14 +508,14 @@ def _compare_and_forecast_models(
         total_p50 += proj_p50
         total_p90 += proj_p90
         cat_forecasts.append(
-            CategoryForecastItem(
+            CategoryForecastSchema(
                 category=cat,
                 spent_so_far_minor=spent_cat,
                 p10_minor=proj_p10,
                 p50_minor=proj_p50,
                 p90_minor=proj_p90,
                 historical_monthly_mean_minor=hist_mean,
-                share_pct=0.0,  # filled after bottom-up reconciliation
+                share_pct=0.0,
             )
         )
 
@@ -522,33 +529,23 @@ def _compare_and_forecast_models(
             y_hat, var_b, top_target, var_top
         )
         total_p50 = max(total_p10, min(total_p90, reconciled_total))
-        cat_forecasts = [
-            CategoryForecastItem(
-                category=cf.category,
-                spent_so_far_minor=cf.spent_so_far_minor,
-                p10_minor=min(cf.p10_minor, rec_p50),
-                p50_minor=rec_p50,
-                p90_minor=max(cf.p90_minor, rec_p50),
-                historical_monthly_mean_minor=cf.historical_monthly_mean_minor,
-                share_pct=0.0,
-            )
-            for cf, rec_p50 in zip(cat_forecasts, reconciled_p50s, strict=False)
-        ]
-
-    # Compute reconciled shares
-    denom = max(1, total_p50)
-    cat_forecasts = [
-        CategoryForecastItem(
-            category=cf.category,
-            spent_so_far_minor=cf.spent_so_far_minor,
-            p10_minor=cf.p10_minor,
-            p50_minor=cf.p50_minor,
-            p90_minor=cf.p90_minor,
-            historical_monthly_mean_minor=cf.historical_monthly_mean_minor,
-            share_pct=round((cf.p50_minor / denom) * 100.0, 1),
+        denom = max(1, total_p50)
+        cat_forecasts = sorted(
+            [
+                CategoryForecastSchema(
+                    category=cf.category,
+                    spent_so_far_minor=cf.spent_so_far_minor,
+                    p10_minor=min(cf.p10_minor, rec_p50),
+                    p50_minor=rec_p50,
+                    p90_minor=max(cf.p90_minor, rec_p50),
+                    historical_monthly_mean_minor=cf.historical_monthly_mean_minor,
+                    share_pct=round((rec_p50 / denom) * 100.0, 1),
+                )
+                for cf, rec_p50 in zip(cat_forecasts, reconciled_p50s, strict=False)
+            ],
+            key=lambda x: x.p50_minor,
+            reverse=True,
         )
-        for cf in sorted(cat_forecasts, key=lambda x: x.p50_minor, reverse=True)
-    ]
 
     discretionary_spent = sum(
         t.amount_base_minor for t in current_month_debits if t.category not in fixed_categories
@@ -572,11 +569,11 @@ def _compare_and_forecast_models(
 def _simulate_cashflow_runway(
     debits: list[TxnRecord],
     credits: list[TxnRecord],
-    recurring_bills: list[RecurringBillItem],
+    recurring_bills: list[RecurringBillSchema],
     liquid_balance_minor: int,
     now: datetime,
     currency: str = "INR",
-) -> CashflowRunwayReport:
+) -> CashflowRunwaySchema:
     """High-speed C++20 Monte Carlo simulation (10,000 paths) + exact closed-form Wald formula."""
     safe_threshold = max(1, convert_minor_units(2500000, "INR", currency)[0])
     if now.month == 12:
@@ -631,7 +628,7 @@ def _simulate_cashflow_runway(
 
     above_days = sum(1 for v in mc_res.p50_by_day[1:] if v >= safe_threshold)
     trajectory = [
-        RunwayPoint(
+        RunwayPointSchema(
             day_offset=d,
             date=(now.date() + timedelta(days=d)).isoformat(),
             p10_balance_minor=mc_res.p10_by_day[d],
@@ -641,7 +638,7 @@ def _simulate_cashflow_runway(
         for d in range(0, horizon + 1, 2)
     ]
 
-    return CashflowRunwayReport(
+    return CashflowRunwaySchema(
         current_liquid_balance_minor=liquid_balance_minor,
         safe_threshold_minor=safe_threshold,
         overdraft_watch_probability_pct=round(mc_res.mc_hazard_prob * 100.0, 1),
@@ -662,8 +659,8 @@ def _cluster_behavioral_personas(
     float,
     dict[int, float],
     str,
-    list[ClusterSummaryItem],
-    list[PcaSamplePoint],
+    list[ClusterSummarySchema],
+    list[PcaSamplePointSchema],
 ]:
     """Cluster discretionary transactions using StandardScaler + KMeans (selecting k via Silhouette) + PCA."""
     disc = [t for t in debits if t.category not in ("rent", "investments", "salary")]
@@ -707,12 +704,11 @@ def _cluster_behavioral_personas(
     best_km = models_by_k[optimal_k]
     labels = best_km.labels_
 
-    # 2D PCA projection for scatter visualization (`ml-best-practices`)
     pca = PCA(n_components=2, random_state=42)
     coords = pca.fit_transform(x_scaled)
 
     # Label each cluster semantically based on its centroid characteristics
-    clusters: list[ClusterSummaryItem] = []
+    clusters: list[ClusterSummarySchema] = []
     cluster_names: dict[int, str] = {}
     used_names: set[str] = set()
 
@@ -763,7 +759,7 @@ def _cluster_behavioral_personas(
         used_names.add(name)
         cluster_names[cid] = name
         clusters.append(
-            ClusterSummaryItem(
+            ClusterSummarySchema(
                 cluster_id=cid,
                 persona_name=name,
                 description=desc,
@@ -780,7 +776,7 @@ def _cluster_behavioral_personas(
     # Sample up to 60 points for the interactive 2D PCA scatterplot
     step = max(1, len(disc) // 60)
     pca_samples = [
-        PcaSamplePoint(
+        PcaSamplePointSchema(
             pc1=round(float(coords[i, 0]), 3),
             pc2=round(float(coords[i, 1]), 3),
             cluster_id=int(labels[i]),
@@ -803,10 +799,10 @@ def _cluster_behavioral_personas(
 
 
 def _build_counterfactual_savings(
-    cat_forecasts: list[CategoryForecastItem],
-    recurring_bills: list[RecurringBillItem],
+    cat_forecasts: list[CategoryForecastSchema],
+    recurring_bills: list[RecurringBillSchema],
     currency: str = "INR",
-) -> list[SavingsRecommendationItem]:
+) -> list[SavingsRecommendationSchema]:
     """Rank elastic discretionary categories to recommend high-impact, low-friction monthly savings."""
     elasticity_map: dict[str, tuple[float, float, str]] = {
         "dining": (
@@ -837,7 +833,7 @@ def _build_counterfactual_savings(
     }
 
     min_save = max(1, convert_minor_units(15000, "INR", currency)[0])
-    recs: list[SavingsRecommendationItem] = []
+    recs: list[SavingsRecommendationSchema] = []
     for cf in cat_forecasts:
         if cf.category not in elasticity_map or cf.p50_minor <= 0:
             continue
@@ -846,7 +842,7 @@ def _build_counterfactual_savings(
         if save_monthly < min_save:
             continue
         recs.append(
-            SavingsRecommendationItem(
+            SavingsRecommendationSchema(
                 category=cf.category,
                 current_monthly_minor=cf.p50_minor,
                 suggested_monthly_minor=cf.p50_minor - save_monthly,
@@ -862,13 +858,13 @@ def _build_counterfactual_savings(
 
 
 def _compute_shap_attributions(
-    cat_forecasts: list[CategoryForecastItem],
-    anomalies: list[AnomalyItem],
-    lifestyle_creep: list[LifestyleCreepItem],
-    recurring_bills: list[RecurringBillItem],
+    cat_forecasts: list[CategoryForecastSchema],
+    anomalies: list[AnomalySchema],
+    lifestyle_creep: list[LifestyleCreepSchema],
+    recurring_bills: list[RecurringBillSchema],
     total_p50_minor: int,
     now: datetime,
-) -> list[ShapAttributionItem]:
+) -> list[ShapAttributionSchema]:
     """Compute additive SHAP-style feature attributions explaining `total_p50_minor` vs historical mean."""
     hist_base = sum(cf.historical_monthly_mean_minor for cf in cat_forecasts) or total_p50_minor
     current_ym = now.strftime("%Y-%m")
@@ -887,32 +883,32 @@ def _compute_shap_attributions(
     )
     residual_velocity = total_p50_minor - (hist_base + anom_this_month + hike_impact + creep_impact)
 
-    items: list[ShapAttributionItem] = [
-        ShapAttributionItem(
+    items: list[ShapAttributionSchema] = [
+        ShapAttributionSchema(
             feature="Historical Monthly Baseline",
             impact_minor=hist_base,
             direction="base",
             explanation="6-month rolling mean across all categories",
         ),
-        ShapAttributionItem(
+        ShapAttributionSchema(
             feature="Unusual / Anomaly Spikes",
             impact_minor=anom_this_month,
             direction="up" if anom_this_month >= 0 else "down",
             explanation="One-off high-severity transactions flagged by IsolationForest & MAD",
         ),
-        ShapAttributionItem(
+        ShapAttributionSchema(
             feature="Category Lifestyle Creep (CUSUM)",
             impact_minor=creep_impact,
             direction="up" if creep_impact >= 0 else "down",
             explanation="Upward drift in weekly discretionary dining & quick-commerce velocity",
         ),
-        ShapAttributionItem(
+        ShapAttributionSchema(
             feature="Subscription Price Creep",
             impact_minor=hike_impact,
             direction="up" if hike_impact >= 0 else "down",
             explanation="Detected recurring membership rate increases vs historical median",
         ),
-        ShapAttributionItem(
+        ShapAttributionSchema(
             feature="Current-Month Pace Adjustment",
             impact_minor=residual_velocity,
             direction="up" if residual_velocity >= 0 else "down",
@@ -922,6 +918,25 @@ def _compute_shap_attributions(
     return items
 
 
+def annotate_transactions(
+    transactions: list[TxnRecord],
+    *,
+    reference_now: datetime | None = None,
+) -> tuple[list[RecurringBillSchema], list[AnomalySchema]]:
+    """Run only recurring-bill and anomaly detection without full forecasting or clustering."""
+    now = reference_now or datetime.now(UTC)
+    debits = [
+        replace(
+            t,
+            occurred_at=_as_utc(t.occurred_at),
+            amount_minor=t.amount_minor or t.amount_base_minor,
+        )
+        for t in transactions
+        if t.direction == "debit"
+    ]
+    return _detect_recurring_bills(debits, now), _detect_anomalies(debits)
+
+
 def build_ml_insights_report(
     transactions: list[TxnRecord],
     *,
@@ -929,22 +944,69 @@ def build_ml_insights_report(
     liquid_balance_minor: int,
     user_rules_count: int = 0,
     reference_now: datetime | None = None,
-) -> MLInsightsReport:
+) -> MLInsightsResponse:
     """Run the full 7-pillar ML & Data Science pipeline on a user's transactions."""
     now = reference_now or datetime.now(UTC)
+    clf_bundle = get_global_classifier()
+
+    if not transactions:
+        next_payday = (
+            datetime(now.year + 1, 1, 1, tzinfo=UTC).date()
+            if now.month == 12
+            else datetime(now.year, now.month + 1, 1, tzinfo=UTC).date()
+        )
+        engine_label = (
+            "C++20 Native (libquantcore -O3)"
+            if is_cpp_kernel_active()
+            else "Python/NumPy Vectorized Fallback"
+        )
+        empty_runway = CashflowRunwaySchema(
+            current_liquid_balance_minor=liquid_balance_minor,
+            safe_threshold_minor=0,
+            overdraft_watch_probability_pct=0.0,
+            wald_analytical_probability_pct=0.0,
+            expected_days_above_threshold=30 if liquid_balance_minor > 0 else 0,
+            next_predicted_payday=next_payday.isoformat(),
+            mc_execution_time_us=0.0,
+            mc_engine=engine_label,
+            mc_simulations_count=0,
+            trajectory=[],
+        )
+        return MLInsightsResponse(
+            currency=currency,
+            generated_at=now.isoformat(),
+            spent_this_month_minor=0,
+            remaining_recurring_minor=0,
+            forecast_p10_minor=0,
+            forecast_p50_minor=0,
+            forecast_p90_minor=0,
+            daily_velocity_minor=0,
+            category_forecasts=[],
+            selected_model="No Data Yet",
+            model_comparisons=[],
+            backtest_series=[],
+            classifier_macro_f1=clf_bundle.test_f1_macro,
+            user_rules_count=user_rules_count,
+            recurring_bills=[],
+            anomalies=[],
+            lifestyle_creep=[],
+            runway=empty_runway,
+            java_audit=verify_financial_ledger([]),
+            optimal_k=0,
+            silhouette_score=0.0,
+            silhouette_by_k={},
+            dominant_persona="No Data Yet",
+            clusters=[],
+            pca_samples=[],
+            savings_recommendations=[],
+            shap_attributions=[],
+        )
+
     normalized = [
-        TxnRecord(
-            id=t.id,
+        replace(
+            t,
             occurred_at=_as_utc(t.occurred_at),
-            direction=t.direction,
-            amount_base_minor=t.amount_base_minor,
-            merchant_name=t.merchant_name,
-            category=t.category,
-            category_source=t.category_source,
-            category_confidence=t.category_confidence,
             amount_minor=t.amount_minor or t.amount_base_minor,
-            currency=t.currency,
-            fx_rate=t.fx_rate,
         )
         for t in transactions
     ]
@@ -986,7 +1048,7 @@ def build_ml_insights_report(
     clf_bundle = get_global_classifier()
     java_audit = verify_financial_ledger(normalized)
 
-    return MLInsightsReport(
+    return MLInsightsResponse(
         currency=currency,
         generated_at=now.isoformat(),
         spent_this_month_minor=spent_this_month,

@@ -5,9 +5,10 @@ import { App } from './App'
 import { formatMinorUnits } from './lib/money'
 
 describe('formatMinorUnits', () => {
-  it('formats 2-decimal currencies (INR, USD) and 0-decimal currencies (JPY)', () => {
+  it('formats 2-decimal (INR, USD), 0-decimal (JPY), and 3-decimal (KWD) currencies', () => {
     expect(formatMinorUnits(125050, 'INR', 'en-IN')).toContain('1,250.50')
     expect(formatMinorUnits(5000, 'JPY', 'ja-JP')).toContain('5,000')
+    expect(formatMinorUnits(12500, 'KWD', 'en-US')).toContain('12.500')
   })
 })
 
@@ -31,7 +32,7 @@ describe('App authentication flow', () => {
           headers: { 'Content-Type': 'application/json' },
         })
       }
-      if (url.endsWith('/api/v1/auth/dev-login') && init?.method === 'POST') {
+      if ((url.endsWith('/api/v1/auth/login') || url.endsWith('/api/v1/auth/dev-login')) && init?.method === 'POST') {
         return new Response(
           JSON.stringify({
             user: {

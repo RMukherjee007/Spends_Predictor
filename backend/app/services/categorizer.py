@@ -5,9 +5,6 @@ Stage 2: Categorize using:
   (a) User's personal active-learning rules (`CategoryRule`) -> source="user"
   (b) High-precision merchant/keyword rules -> source="rule"
   (c) Global TF-IDF + LogisticRegression classifier -> source="ml"
-
-Follows strict featurization ordering (`ml-best-practices`): train/test split is performed BEFORE
-fitting the TF-IDF vectorizer and classifier so evaluation metrics have zero data leakage.
 """
 
 from __future__ import annotations
@@ -219,17 +216,63 @@ class ClassifierBundle:
     test_size: int
 
 
-_BRAND_LABELS: tuple[str, ...] = (
-    "Swiggy Instamart", "Blinkit", "Zepto", "BigBasket", "DMart",
-    "Swiggy", "Zomato", "Starbucks", "Third Wave Coffee", "Blue Tokai", "Domino's", "McDonald's",
-    "Uber", "Ola Cabs", "Namma Yatri", "Indian Oil", "Shell",
-    "Netflix", "Spotify", "YouTube Premium", "Apple Services", "OpenAI ChatGPT", "Cult.fit",
-    "Airtel Fiber", "Jio Fiber", "ACT Fibernet", "BESCOM Electricity", "Tata Power",
-    "House Rent", "NoBroker Rent",
-    "Amazon", "Flipkart", "Myntra", "IKEA", "Decathlon",
-    "Apollo Pharmacy", "Tata 1mg", "Manipal Hospital",
-    "IndiGo Airlines", "IRCTC Railways", "MakeMyTrip", "Airbnb",
-    "BookMyShow", "PVR Inox", "Zerodha SIP", "Groww Mutual Fund", "TechCorp Salary",
+_BRAND_PATTERNS: tuple[tuple[re.Pattern[str], str], ...] = (
+    (re.compile(r"swiggy\s*instamart", re.I), "Swiggy Instamart"),
+    (re.compile(r"\bblinkit\b", re.I), "Blinkit"),
+    (re.compile(r"\bzepto\b", re.I), "Zepto"),
+    (re.compile(r"\bbigbasket\b", re.I), "BigBasket"),
+    (re.compile(r"\bdmart\b", re.I), "DMart"),
+    (re.compile(r"\bratnadeep\b", re.I), "Ratnadeep"),
+    (re.compile(r"\bswiggy\b", re.I), "Swiggy"),
+    (re.compile(r"\bzomato\b", re.I), "Zomato"),
+    (re.compile(r"\bstarbucks\b", re.I), "Starbucks"),
+    (re.compile(r"third\s*wave", re.I), "Third Wave Coffee"),
+    (re.compile(r"blue\s*tokai", re.I), "Blue Tokai"),
+    (re.compile(r"\bdomino", re.I), "Domino's"),
+    (re.compile(r"\bmcdonald", re.I), "McDonald's"),
+    (re.compile(r"\btruffles\b", re.I), "Truffles"),
+    (re.compile(r"\buber\b", re.I), "Uber"),
+    (re.compile(r"ola\s*cabs|\bola\b", re.I), "Ola Cabs"),
+    (re.compile(r"namma\s*yatri", re.I), "Namma Yatri"),
+    (re.compile(r"indian\s*oil", re.I), "Indian Oil"),
+    (re.compile(r"\bshell\b", re.I), "Shell"),
+    (re.compile(r"\bbmrc\b|\bmetro\b", re.I), "BMRC Metro"),
+    (re.compile(r"\bnetflix", re.I), "Netflix"),
+    (re.compile(r"\bspotify\b", re.I), "Spotify"),
+    (re.compile(r"youtube\s*premium", re.I), "YouTube Premium"),
+    (re.compile(r"apple\.com/bill|\bicloud\b", re.I), "Apple Services"),
+    (re.compile(r"openai|chatgpt", re.I), "OpenAI ChatGPT"),
+    (re.compile(r"cult\.?fit", re.I), "Cult.fit"),
+    (re.compile(r"\bairtel\b", re.I), "Airtel Fiber"),
+    (re.compile(r"jio\s*fiber", re.I), "Jio Fiber"),
+    (re.compile(r"act\s*fibernet", re.I), "ACT Fibernet"),
+    (re.compile(r"\bbescom\b", re.I), "BESCOM Electricity"),
+    (re.compile(r"tata\s*power", re.I), "Tata Power"),
+    (re.compile(r"\bbwssb\b", re.I), "BWSSB Water"),
+    (re.compile(r"\bnobroker\b", re.I), "NoBroker Rent"),
+    (re.compile(r"stanza\s*living", re.I), "Stanza Living"),
+    (re.compile(r"house\s*rent|apartment\s*rent|landlord\s*rent", re.I), "House Rent"),
+    (re.compile(r"\bamzn\b|\bamazon\b", re.I), "Amazon"),
+    (re.compile(r"\bflipkart\b", re.I), "Flipkart"),
+    (re.compile(r"\bmyntra\b", re.I), "Myntra"),
+    (re.compile(r"\bikea\b", re.I), "IKEA"),
+    (re.compile(r"\bdecathlon\b", re.I), "Decathlon"),
+    (re.compile(r"\bcroma\b", re.I), "Croma Electronics"),
+    (re.compile(r"apple\s*store", re.I), "Apple Store"),
+    (re.compile(r"apollo\s*pharmacy", re.I), "Apollo Pharmacy"),
+    (re.compile(r"\b1mg\b", re.I), "Tata 1mg"),
+    (re.compile(r"manipal\s*hosp", re.I), "Manipal Hospital"),
+    (re.compile(r"\bpracto\b", re.I), "Practo"),
+    (re.compile(r"\bindigo\b", re.I), "IndiGo Airlines"),
+    (re.compile(r"\birctc\b", re.I), "IRCTC Railways"),
+    (re.compile(r"\bmakemytrip\b", re.I), "MakeMyTrip"),
+    (re.compile(r"\bairbnb\b", re.I), "Airbnb"),
+    (re.compile(r"\bbookmyshow\b", re.I), "BookMyShow"),
+    (re.compile(r"pvr\s*inox", re.I), "PVR Inox"),
+    (re.compile(r"\bsteam\b", re.I), "Steam Games"),
+    (re.compile(r"\bzerodha\b", re.I), "Zerodha SIP"),
+    (re.compile(r"\bgroww\b", re.I), "Groww Mutual Fund"),
+    (re.compile(r"\btechcorp\b", re.I), "TechCorp Salary"),
 )
 
 
@@ -238,10 +281,9 @@ def clean_merchant_name(raw_description: str) -> str:
     cleaned = raw_description.strip()
     for pattern, canonical, _ in _CANONICAL_MERCHANTS:
         if pattern.search(cleaned):
-            # Keep specific brand token if obvious, else canonical label
-            for brand in _BRAND_LABELS:
-                if re.search(re.escape(brand.split()[0]), cleaned, re.I):
-                    return brand
+            for brand_pat, brand_label in _BRAND_PATTERNS:
+                if brand_pat.search(cleaned):
+                    return brand_label
             return canonical
 
     stripped = _NOISE_PREFIXES.sub("", cleaned)
@@ -255,12 +297,7 @@ def clean_merchant_name(raw_description: str) -> str:
 
 @lru_cache(maxsize=1)
 def get_global_classifier() -> ClassifierBundle:
-    """Train and evaluate the global TF-IDF + LogisticRegression transaction classifier.
-
-    Splits into train and test BEFORE fitting the TF-IDF feature union and classifier to prevent
-    data leakage (`ml-best-practices`), computes macro F1 on the held-out split, and then fits on
-    the full seed corpus for inference.
-    """
+    """Train and evaluate the global TF-IDF + LogisticRegression transaction classifier."""
     texts = [row[0] for row in _SEED_CORPUS]
     labels = [row[1] for row in _SEED_CORPUS]
 

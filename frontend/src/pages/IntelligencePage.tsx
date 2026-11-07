@@ -107,7 +107,12 @@ export function IntelligencePage() {
     )
   }
 
-  if (!insights) {
+  if (
+    !insights ||
+    (insights.category_forecasts.length === 0 &&
+      insights.java_audit.verified_debit_count === 0 &&
+      insights.java_audit.verified_credit_count === 0)
+  ) {
     return (
       <div className="rounded-2xl border border-line bg-surface p-12 text-center space-y-4">
         <BrainCircuit className="mx-auto h-8 w-8 text-muted" aria-hidden="true" />
@@ -198,7 +203,7 @@ export function IntelligencePage() {
 
       {/* C++20 & Java OpenJDK Dual High-Performance / Strict Security Telemetry Banners */}
       <section aria-label="Verification and Hardware Telemetry" className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* C++20 SIMD Kernel Telemetry */}
+        {/* C++20 Native Kernel Telemetry */}
         <div className="rounded-2xl border border-line bg-surface p-5 space-y-3 relative overflow-hidden">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
@@ -231,7 +236,7 @@ export function IntelligencePage() {
             </div>
           </div>
           <p className="text-[11px] text-muted leading-tight">
-            Exact Bachelier-Wald Brownian motion with drift barrier formula computed alongside SIMD SplitMix64 pseudo-random generation.
+            Exact Bachelier-Wald Brownian motion with drift barrier formula computed alongside SplitMix64 pseudo-random generation.
           </p>
         </div>
 
@@ -247,7 +252,13 @@ export function IntelligencePage() {
                 <p className="text-[11px] text-muted">{java_audit.verifier_engine}</p>
               </div>
             </div>
-            <span className="inline-flex items-center gap-1 rounded-md bg-positive/10 text-positive px-2 py-0.5 text-xs font-medium">
+            <span
+              className={`inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ${
+                java_audit.is_valid
+                  ? 'bg-positive/10 text-positive'
+                  : 'bg-danger/10 text-danger'
+              }`}
+            >
               <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
               {java_audit.is_valid ? 'Seal Verified' : 'Audit Mismatch'}
             </span>
@@ -255,7 +266,7 @@ export function IntelligencePage() {
 
           <div className="space-y-1.5">
             <div className="flex items-center justify-between text-xs">
-              <span className="text-muted">SHA-256 Merkle Audit Seal:</span>
+              <span className="text-muted">SHA-256 Hash-Chain Audit Seal:</span>
               <button
                 type="button"
                 onClick={() => copyAuditSeal(java_audit.audit_seal_sha256)}
@@ -366,7 +377,6 @@ export function IntelligencePage() {
         </nav>
       </div>
 
-      {/* TAB 1: Cashflow Forecast & MinT Reconciliation */}
       {activeTab === 'forecast' && (
         <section aria-labelledby="forecast-heading" className="space-y-6">
           <div className="rounded-2xl border border-line bg-surface p-6 space-y-4">
@@ -417,7 +427,6 @@ export function IntelligencePage() {
         </section>
       )}
 
-      {/* TAB 2: Multi-Model Backtesting & Bootstrap CI */}
       {activeTab === 'models' && (
         <section aria-labelledby="models-heading" className="space-y-6">
           <div className="rounded-2xl border border-line bg-surface p-6 space-y-5">
@@ -502,7 +511,6 @@ export function IntelligencePage() {
         </section>
       )}
 
-      {/* TAB 3: Cashflow Runway & C++ Monte Carlo */}
       {activeTab === 'runway' && (
         <section aria-labelledby="runway-heading" className="space-y-6">
           <div className="rounded-2xl border border-line bg-surface p-6 space-y-5">
@@ -576,7 +584,6 @@ export function IntelligencePage() {
         </section>
       )}
 
-      {/* TAB 4: Recurring Bills & Silent Price Hikes */}
       {activeTab === 'recurring' && (
         <section aria-labelledby="recurring-heading" className="space-y-6">
           <div className="rounded-2xl border border-line bg-surface p-6 space-y-5">
@@ -637,7 +644,6 @@ export function IntelligencePage() {
         </section>
       )}
 
-      {/* TAB 5: Anomaly Detection & CUSUM Lifestyle Drift */}
       {activeTab === 'anomalies' && (
         <section aria-labelledby="anomalies-heading" className="space-y-6">
           {/* Ensemble Anomalies */}
@@ -740,7 +746,6 @@ export function IntelligencePage() {
         </section>
       )}
 
-      {/* TAB 6: Personas, PCA & SHAP XAI */}
       {activeTab === 'personas' && (
         <section aria-labelledby="personas-heading" className="space-y-6">
           {/* Persona Clustering Overview */}

@@ -28,11 +28,15 @@ frontend/coverage/
 backend/.env
 frontend/.env.local
 
-# Native C++ / Java compiled artifacts (built on demand)
+# Native C++ / Java / Maven compiled artifacts (built on demand)
+backend/target/
+target/
 *.dylib
 *.so
 *.dll
 *.class
+*.mv.db
+*.trace.db
 
 # OS / IDE
 .DS_Store

@@ -1,36 +1,37 @@
 # Spends Predictor
 
-Production-grade personal & commercial spend forecasting platform. Built web-first with a versioned, mobile-ready API (`/api/v1`) so native iOS/Android clients can share the exact same backend and OpenAPI contract.
+Production-grade polyglot personal & commercial spend forecasting platform. Built web-first with a versioned, mobile-ready REST API (`/api/v1`) powered by **Java 21+ (Spring Boot 3)**, a **Python `scikit-learn` ML engine**, a **C++20 `-O3` native quantitative kernel (`libquantcore`)**, and a **React 19 + TypeScript** frontend.
 
 ---
 
-## Architecture Highlights (Phase 0 Foundation)
+## Architecture Highlights
 
-- **Backend (`backend/`)**: FastAPI, SQLAlchemy 2 (async), Alembic migrations, Pydantic v2 settings, Structlog JSON/console logging, request-ID & security-headers ASGI middleware, ARQ + Redis background worker, and Sentry error reporting (with `send_default_pii=False`).
-- **Dual-Mode Auth**:
+- **Primary Backend API (`backend/src/main/java/com/spendspredictor/`)**:
+  - **Java 21+ & Spring Boot 3.2**: Serves all `/api/v1/*` REST endpoints (`health`, `auth`, `users`, `accounts`, `transactions`, `insights`), request-ID & CSP/HSTS security headers filter, sliding-window rate limiting, and JDBC persistence (PostgreSQL in production, zero-config embedded PostgreSQL-compatibility mode locally).
+  - **In-JVM `LedgerSecurityVerifier`**: Executes directly inside the Spring Boot JVM using `java.math.BigDecimal` (`MathContext.DECIMAL128`, 34 decimal digits, `RoundingMode.HALF_EVEN` banker's rounding) and builds a cumulative `SHA-256` Merkle-style hash-chain seal over every transaction record.
+- **Dual-Mode Auth & Field Encryption**:
   - **Web client**: `httpOnly` access + rotating refresh cookies (`sp_access`, `sp_refresh`) + double-submit CSRF cookie/header (`sp_csrf` / `X-CSRF-Token`).
-  - **Future Mobile client**: `Authorization: Bearer` access tokens + rotating refresh tokens with reuse/theft detection that revokes the entire token family.
-- **Application-Level Encryption**: `EncryptedString` SQLAlchemy type using `MultiFernet` (AES-128-CBC + HMAC-SHA256) with multi-key rotation for sensitive bank/account fields.
-- **Multi-Currency Money Engine**: All 150+ active ISO-4217 currencies with exact minor-unit metadata (e.g., 2 decimals for `INR`/`USD`, 0 for `JPY`, 3 for `KWD`). Money is always stored in integer minor units (paise/cents), never floats.
-- **Frontend (`frontend/`)**: React 19 + TypeScript + Vite + Tailwind CSS v4, end-to-end typed OpenAPI client (`openapi-typescript` + `openapi-fetch`), automatic light/dark mode (`color-scheme: light dark` + `light-dark()`), Forced Colors Mode support, and container-query responsive layout.
+  - **Mobile/Bearer client**: `Authorization: Bearer` access tokens + rotating refresh tokens with token-family reuse/theft detection.
+  - **Application-Level Encryption**: Multi-key `AES-CBC-PKCS5Padding` + `HMAC-SHA256` encryption at rest for sensitive account fields.
+- **Multi-Currency Money Engine**: 18+ active ISO-4217 currencies with exact minor-unit exponents (`0` for `JPY`, `2` for `INR`/`USD`, `3` for `KWD`). Money is stored strictly in 64-bit integer minor units (paise/cents), never floats.
+- **7-Pillar ML & C++20 Quantitative Engine (`backend/app/`)**:
+  - **Python `scikit-learn` (`ml_engine.py`, `categorizer.py`, `ml_cli.py`)**: Ridge / Huber / GradientBoosting / Holt-Winters walk-forward forecasting, TF-IDF + LogisticRegression + Active Learning categorization, IsolationForest + MAD anomaly detection, K-Means + PCA behavioral personas, and exact linear SHAP attributions.
+  - **C++20 Native Kernel (`native/quantcore.cpp`)**: Compiled with `-std=c++20 -O3` for 10,000-path Xorshift64* Monte Carlo liquidity runway simulations, closed-form Bachelier-Wald Brownian barrier-crossing probabilities, Page's CUSUM drift statistics, and Wickramasuriya MinT variance-weighted hierarchical forecast reconciliation.
+- **Frontend (`frontend/`)**: React 19 + TypeScript + Vite + Tailwind CSS v4, end-to-end typed OpenAPI client (`openapi-typescript` + `openapi-fetch`), automatic light/dark mode, and interactive SVG quantitative charts.
 
 ---
 
 ## Quickstart (No External Keys or Docker Required)
 
-By default, local development uses SQLite and enables passwordless Dev Login so you can run the full stack immediately:
-
-### 1. Start the Backend API
+### 1. Start the Java Spring Boot 3 Backend API
 
 ```bash
 cd backend
-cp .env.example .env
-.venv/bin/alembic upgrade head
-.venv/bin/uvicorn app.main:app --reload --port 8000
+mvn spring-boot:run
 ```
 
-- API docs (Swagger UI): `http://localhost:8000/docs`
 - Health check: `http://localhost:8000/api/v1/health`
+- Readiness check (DB + C++20 kernel + JVM BigDecimal verifier): `http://localhost:8000/api/v1/health/ready`
 
 ### 2. Start the Frontend Web App
 
@@ -40,57 +41,26 @@ cp .env.example .env.local
 npm run dev
 ```
 
-Open `http://localhost:5173` and click **Sign in** to log in immediately with the local development account, view the dashboard, and update your base currency or timezone in **Settings**.
-
----
-
-## Running with Postgres & Redis (Docker Compose)
-
-When Docker Desktop is running:
-
-```bash
-docker compose up --build
-```
+Open `http://localhost:5173` and click **Sign in** to log in immediately with the local development account, sync sample Indian & international transactions, upload CSV bank statements, or run what-if Monte Carlo runway simulations.
 
 ---
 
 ## Quality Checks & Tests
 
 ```bash
-# Backend: Ruff lint, format check, strict Mypy, and Pytest (24 tests)
+# 1. Java Spring Boot 3 API Integration Tests (MockMvc + H2 PostgreSQL mode + Python ML + C++20)
 cd backend
-.venv/bin/ruff check .
+mvn test
+
+# 2. Python ML Engine & C++20 Native Kernel Checks (Ruff, strict Mypy, Pytest)
+.venv/bin/ruff check app tests
 .venv/bin/mypy app tests
 .venv/bin/pytest -v
 
-# Regenerate OpenAPI schema + frontend TypeScript types
-.venv/bin/python -m app.scripts.export_openapi ../frontend/openapi.json
-cd ../frontend && npm run gen:api
-
-# Frontend: ESLint, TypeScript, Vitest, and Vite production build
+# 3. Frontend: ESLint, TypeScript, Vitest, and Vite production build
+cd ../frontend
 npm run lint
 npm run typecheck
-npm test
+npm test -- --run
 npm run build
 ```
-
----
-
-## External Accounts Setup Checklist (When Ready for Production)
-
-You do **not** need any of these for local development, but when you are ready to deploy publicly:
-
-1. **Encryption Key (`FIELD_ENCRYPTION_KEYS`)**:
-   - Run `backend/.venv/bin/python -m app.scripts.generate_key` to generate a 32-byte URL-safe Fernet key.
-2. **Google Sign-In (`GOOGLE_CLIENT_IDS` / `VITE_GOOGLE_CLIENT_ID`)**:
-   - Create a project in [Google Cloud Console](https://console.cloud.google.com/).
-   - Go to **APIs & Services → Credentials → Create Credentials → OAuth client ID** (Web application).
-   - Add `http://localhost:5173` and your Render frontend URL to **Authorized JavaScript origins**.
-   - Paste the Client ID into `GOOGLE_CLIENT_IDS` (backend) and `VITE_GOOGLE_CLIENT_ID` (frontend).
-3. **Render Deployment (`render.yaml`)**:
-   - Push this repository to GitHub.
-   - In [Render](https://dashboard.render.com/), click **New → Blueprint** and select your repo.
-   - Render will automatically provision the free PostgreSQL database, Key-Value store, FastAPI web service, and React static site using `render.yaml`.
-   - Note: Render formats Postgres URLs as `postgres://...`; if needed, prefix with `postgresql+asyncpg://` in the `DATABASE_URL` env var.
-4. **Sentry Error Monitoring (Optional)**:
-   - Create a free account at [sentry.io](https://sentry.io/), create a **FastAPI** project and a **React** project, and set `SENTRY_DSN` (backend) and `VITE_SENTRY_DSN` (frontend).

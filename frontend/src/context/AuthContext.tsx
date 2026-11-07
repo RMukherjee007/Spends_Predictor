@@ -17,8 +17,7 @@ import {
 interface AuthContextValue {
   user: UserRead | null
   isLoading: boolean
-  devLogin: (email: string, fullName?: string) => Promise<void>
-  googleLogin: (idToken: string) => Promise<void>
+  devLogin: (email: string, fullName?: string, password?: string) => Promise<void>
   updateProfile: (patch: UserUpdate) => Promise<UserRead>
   logout: () => Promise<void>
 }
@@ -56,32 +55,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  const devLogin = useCallback(async (email: string, fullName?: string) => {
-    const resp = await fetch('/api/v1/auth/dev-login', {
+  const devLogin = useCallback(async (email: string, fullName?: string, password?: string) => {
+    const resp = await fetch('/api/v1/auth/login', {
       method: 'POST',
       credentials: 'include',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         email,
+        password: password ?? 'password123',
         full_name: fullName?.trim() ? fullName.trim() : null,
         client: 'web',
       }),
     })
     if (!resp.ok) {
-      throw new Error('Development sign-in failed. Please verify the backend server is running.')
+      let errMsg = 'Sign-in failed. Please verify your email and password.'
+      try {
+        const errBody = (await resp.json()) as { error?: { message?: string } }
+        if (errBody?.error?.message) errMsg = errBody.error.message
+      } catch {
+        // Ignore JSON parse errors
+      }
+      throw new Error(errMsg)
     }
     const body = (await resp.json()) as { user: UserRead }
     setUser(body.user)
-  }, [])
-
-  const googleLogin = useCallback(async (idToken: string) => {
-    const { data, error } = await api.POST('/api/v1/auth/google', {
-      body: { id_token: idToken, client: 'web' },
-    })
-    if (error || !data) {
-      throw new Error(extractApiError(error, 'Google sign-in failed'))
-    }
-    setUser(data.user)
   }, [])
 
   const updateProfile = useCallback(async (patch: UserUpdate) => {
@@ -103,8 +100,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [])
 
   const value = useMemo<AuthContextValue>(
-    () => ({ user, isLoading, devLogin, googleLogin, updateProfile, logout }),
-    [user, isLoading, devLogin, googleLogin, updateProfile, logout],
+    () => ({ user, isLoading, devLogin, updateProfile, logout }),
+    [user, isLoading, devLogin, updateProfile, logout],
   )
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>

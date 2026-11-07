@@ -1,9 +1,11 @@
 {
   "name": "spends-predictor",
   "private": true,
-  "version": "0.1.0",
-  "description": "Spends Predictor monorepo (FastAPI + React)",
+  "version": "0.2.0",
+  "description": "Spends Predictor monorepo (Java Spring Boot 3 + Python ML + C++20 + React)",
   "scripts": {
+    "dev:backend": "mvn -f backend/pom.xml spring-boot:run",
+    "test:backend": "mvn -f backend/pom.xml test",
     "dev:frontend": "npm --prefix frontend run dev",
     "build:frontend": "npm --prefix frontend run build",
     "test:frontend": "npm --prefix frontend test",

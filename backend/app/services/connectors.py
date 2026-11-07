@@ -166,40 +166,95 @@ class MockBankConnector:
             month_idx = day_offset // 30
             creep_multiplier = 1.0 + max(0, month_idx - 2) * 0.11
 
-            # --- 1. Monthly Salary Credit (1st of month) & 2. Fixed/Semi-Variable Recurring Bills ---
             if dom == 1:
-                _add(f"mock-sal-{ym}", "mock-hdfc-savings", day_dt.replace(hour=9, minute=15), 14500000, "NEFT/TECHCORP INDIA SALARY CREDIT/BLR", direction="credit")
+                _add(
+                    f"mock-sal-{ym}",
+                    "mock-hdfc-savings",
+                    day_dt.replace(hour=9, minute=15),
+                    14500000,
+                    "NEFT/TECHCORP INDIA SALARY CREDIT/BLR",
+                    direction="credit",
+                )
             elif dom == 3:
-                _add(f"mock-rent-{ym}", "mock-hdfc-savings", day_dt.replace(hour=10, minute=30), 2400000, "UPI/998877/NOBROKER RENT PAYMENT/BANGALORE")
+                _add(
+                    f"mock-rent-{ym}",
+                    "mock-hdfc-savings",
+                    day_dt.replace(hour=10, minute=30),
+                    2400000,
+                    "UPI/998877/NOBROKER RENT PAYMENT/BANGALORE",
+                )
             elif dom == 5:
-                _add(f"mock-sip-{ym}", "mock-hdfc-savings", day_dt.replace(hour=11, minute=0), 1000000, "ACH/ZERODHA BROKING SIP/MUMBAI")
+                _add(
+                    f"mock-sip-{ym}",
+                    "mock-hdfc-savings",
+                    day_dt.replace(hour=11, minute=0),
+                    1000000,
+                    "ACH/ZERODHA BROKING SIP/MUMBAI",
+                )
             elif dom == 7:
-                _add(f"mock-airtel-{ym}", "mock-icici-sapphiro", day_dt.replace(hour=14, minute=20), 117900, "UPI/223344/AIRTEL FIBER BROADBAND/IN")
+                _add(
+                    f"mock-airtel-{ym}",
+                    "mock-icici-sapphiro",
+                    day_dt.replace(hour=14, minute=20),
+                    117900,
+                    "UPI/223344/AIRTEL FIBER BROADBAND/IN",
+                )
             elif dom == 10:
-                # BESCOM electricity varies slightly around ₹1,850
                 elec_minor = max(140000, int(rng.gauss(185000, 14000)))
-                _add(f"mock-bescom-{ym}", "mock-hdfc-savings", day_dt.replace(hour=16, minute=5), elec_minor, "UPI/665544/BESCOM ELECTRICITY BILL/BANGALORE")
+                _add(
+                    f"mock-bescom-{ym}",
+                    "mock-hdfc-savings",
+                    day_dt.replace(hour=16, minute=5),
+                    elec_minor,
+                    "UPI/665544/BESCOM ELECTRICITY BILL/BANGALORE",
+                )
             elif dom == 12:
-                _add(f"mock-netflix-{ym}", "mock-icici-sapphiro", day_dt.replace(hour=8, minute=0), 64900, "ACH/NETFLIX.COM SUBSCRIPTION/MUMBAI")
+                _add(
+                    f"mock-netflix-{ym}",
+                    "mock-icici-sapphiro",
+                    day_dt.replace(hour=8, minute=0),
+                    64900,
+                    "ACH/NETFLIX.COM SUBSCRIPTION/MUMBAI",
+                )
             elif dom == 15:
-                # Cult.fit Gym with a silent +22% price hike in the most recent 2 months!
                 gym_amount = 195000 if month_idx >= 4 else 159900
-                _add(f"mock-cultfit-{ym}", "mock-icici-sapphiro", day_dt.replace(hour=7, minute=30), gym_amount, "UPI/CULTFIT HEALTHCARE MEMBERSHIP/BANGALORE")
+                _add(
+                    f"mock-cultfit-{ym}",
+                    "mock-icici-sapphiro",
+                    day_dt.replace(hour=7, minute=30),
+                    gym_amount,
+                    "UPI/CULTFIT HEALTHCARE MEMBERSHIP/BANGALORE",
+                )
             elif dom == 18:
-                # USD subscription on Wise USD card ($20.00 = 2000 cents)
-                _add(f"mock-openai-{ym}", "mock-wise-usd", day_dt.replace(hour=18, minute=45), 2000, "POS OPENAI CHATGPT PLUS SUB SAN FRANCISCO", currency="USD")
+                _add(
+                    f"mock-openai-{ym}",
+                    "mock-wise-usd",
+                    day_dt.replace(hour=18, minute=45),
+                    2000,
+                    "POS OPENAI CHATGPT PLUS SUB SAN FRANCISCO",
+                    currency="USD",
+                )
 
-            # --- 3. Weekly Groceries (2-3 times a week) ---
             if dow in (1, 4, 6) and rng.random() < 0.78:
                 groc_amt = max(28000, int(rng.gauss(82000, 22000)))
-                _add(f"mock-groc-{ymd}", "mock-hdfc-savings", day_dt.replace(hour=rng.choice([11, 18, 20]), minute=12), groc_amt, rng.choice(groc_merchants))
+                _add(
+                    f"mock-groc-{ymd}",
+                    "mock-hdfc-savings",
+                    day_dt.replace(hour=rng.choice([11, 18, 20]), minute=12),
+                    groc_amt,
+                    rng.choice(groc_merchants),
+                )
 
-            # --- 4. Commute / Transport (Weekdays) ---
             if dow < 5 and rng.random() < 0.65:
                 ride_amt = max(11000, int(rng.gauss(29000, 8000)))
-                _add(f"mock-ride-{ymd}", "mock-hdfc-savings", day_dt.replace(hour=9, minute=rng.randint(5, 50)), ride_amt, rng.choice(commute_merchants))
+                _add(
+                    f"mock-ride-{ymd}",
+                    "mock-hdfc-savings",
+                    day_dt.replace(hour=9, minute=rng.randint(5, 50)),
+                    ride_amt,
+                    rng.choice(commute_merchants),
+                )
 
-            # --- 5. Dining & Weekend Spikes + Lifestyle Creep ---
             is_weekend = dow >= 4
             if rng.random() < (0.72 if is_weekend else 0.35):
                 base_meal = 78000 if is_weekend else 42000
@@ -213,14 +268,24 @@ class MockBankConnector:
                     rng.choice(dining_merchants),
                 )
 
-            # --- 6. Payday Splurge Shopping (Days 1..5 of month) ---
             if 1 <= dom <= 5 and rng.random() < 0.42:
                 shop_amt = max(89900, int(rng.gauss(245000, 65000)))
-                _add(f"mock-shop-{ymd}", "mock-icici-sapphiro", day_dt.replace(hour=22, minute=35), shop_amt, rng.choice(shop_merchants))
+                _add(
+                    f"mock-shop-{ymd}",
+                    "mock-icici-sapphiro",
+                    day_dt.replace(hour=22, minute=35),
+                    shop_amt,
+                    rng.choice(shop_merchants),
+                )
 
-        # --- 7. Inject Explicit Anomalies in the Current Month ---
         recent_dt = (now - timedelta(days=3)).replace(hour=2, minute=15, second=0, microsecond=0)
-        _add("mock-anomaly-late-electronics", "mock-icici-sapphiro", recent_dt, 1890000, "POS CROMA ELECTRONICS STORE LATE NIGHT")
+        _add(
+            "mock-anomaly-late-electronics",
+            "mock-icici-sapphiro",
+            recent_dt,
+            1890000,
+            "POS CROMA ELECTRONICS STORE LATE NIGHT",
+        )
         _add(
             "mock-anomaly-fine-dining-spike",
             "mock-icici-sapphiro",
@@ -269,7 +334,9 @@ def parse_csv_statement(
         raw_debit = _pick(row, ("debit", "withdrawal", "dr"))
         raw_credit = _pick(row, ("credit", "deposit", "cr"))
         raw_dir = _pick(row, ("direction", "type", "dr_cr", "indicator")).lower()
-        raw_curr = (_pick(row, ("currency", "curr", "iso_currency")) or default_currency).upper().strip()
+        raw_curr = (
+            (_pick(row, ("currency", "curr", "iso_currency")) or default_currency).upper().strip()
+        )
 
         if not raw_curr or len(raw_curr) != 3 or not is_valid_currency(raw_curr):
             continue
