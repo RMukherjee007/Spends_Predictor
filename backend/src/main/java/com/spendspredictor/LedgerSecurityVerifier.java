@@ -21,13 +21,23 @@ public class LedgerSecurityVerifier {
 
     public static class TransactionRecord {
         public String id;
+        public String accountId;
         public String occurredAt;
         public String direction; // "debit" | "credit"
         public long amountMinor;
         public String currency;
         public long amountBaseMinor;
         public double fxRate;
+        public String rawDescription;
+        public String merchantName;
         public String category;
+        public String categorySource;
+        public double categoryConfidence;
+        public boolean isRecurring;
+        public boolean isAnomaly;
+        public double anomalyScore;
+        public String anomalyReason;
+        public String externalId;
     }
 
     public static class VerificationResult {
@@ -39,6 +49,7 @@ public class LedgerSecurityVerifier {
         public int verifiedCreditCount;
         public int fxAnomalyCount;
         public String auditSealSha256;
+        public String sealSignature;
         public String verifierEngine;
         public Map<String, Long> categoryTotalsMinor = new LinkedHashMap<>();
 
@@ -46,6 +57,9 @@ public class LedgerSecurityVerifier {
             Map<String, Object> m = new LinkedHashMap<>();
             m.put("is_valid", isValid);
             m.put("audit_seal_sha256", auditSealSha256);
+            if (sealSignature != null) {
+                m.put("seal_signature", sealSignature);
+            }
             m.put("verified_debit_count", verifiedDebitCount);
             m.put("verified_credit_count", verifiedCreditCount);
             m.put("total_debits_minor", verifiedDebitTotalMinor);
@@ -56,10 +70,15 @@ public class LedgerSecurityVerifier {
         }
     }
 
+    private static String sanitize(String val) {
+        if (val == null) return "";
+        return val.replace("\\", "\\\\").replace("|", "\\|");
+    }
+
     public static VerificationResult verifyLedger(List<TransactionRecord> transactions) {
         VerificationResult res = new VerificationResult();
         res.isValid = true;
-        res.verifierEngine = "Java OpenJDK " + System.getProperty("java.version") + " (BigDecimal DECIMAL128 + SHA-256)";
+        res.verifierEngine = "Java OpenJDK " + System.getProperty("java.version") + " (BigDecimal DECIMAL128 + Full-Field SHA-256 Merkle Tree + HMAC-SHA256 Signature)";
 
         BigDecimal debitTotal = BigDecimal.ZERO;
         BigDecimal creditTotal = BigDecimal.ZERO;
@@ -113,7 +132,25 @@ public class LedgerSecurityVerifier {
                 res.isValid = false;
             }
 
-            String canonicalRow = t.id + "|" + t.occurredAt + "|" + t.direction + "|" + t.amountMinor + "|" + t.amountBaseMinor + "|" + t.fxRate + "|" + t.currency + "|" + t.category;
+            // Every transaction field and metadata dimension is sealed into the canonical representation
+            String canonicalRow = sanitize(t.id) + "|"
+                + sanitize(t.accountId) + "|"
+                + sanitize(t.occurredAt) + "|"
+                + sanitize(t.direction) + "|"
+                + t.amountMinor + "|"
+                + t.amountBaseMinor + "|"
+                + t.fxRate + "|"
+                + sanitize(t.currency) + "|"
+                + sanitize(t.merchantName) + "|"
+                + sanitize(t.rawDescription) + "|"
+                + sanitize(t.category) + "|"
+                + sanitize(t.categorySource) + "|"
+                + t.categoryConfidence + "|"
+                + t.isRecurring + "|"
+                + t.isAnomaly + "|"
+                + t.anomalyScore + "|"
+                + sanitize(t.anomalyReason) + "|"
+                + sanitize(t.externalId);
             byte[] rowBytes = canonicalRow.getBytes(StandardCharsets.UTF_8);
 
             // RFC 6962 domain-separated Merkle leaf: SHA-256(0x00 || canonicalRow)

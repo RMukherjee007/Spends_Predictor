@@ -58,8 +58,18 @@ public class SpendsPredictorApplication {
         @Value("${app.field-encryption-keys:}")
         public String fieldEncryptionKeysRaw;
 
+        @Value("${app.ledger-signing-key:}")
+        public String ledgerSigningKey;
+
         @Value("${app.trust-proxy-headers:true}")
         public boolean trustProxyHeaders;
+
+        public String getEffectiveLedgerSigningKey() {
+            if (ledgerSigningKey != null && !ledgerSigningKey.isBlank()) {
+                return ledgerSigningKey;
+            }
+            return "ledger-signing-derived:" + jwtSecret;
+        }
 
         public List<String> getCorsOrigins() {
             return splitCsv(corsOriginsRaw);

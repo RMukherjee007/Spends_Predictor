@@ -466,6 +466,35 @@ public class SecurityService {
         return mac.doFinal(data);
     }
 
+    public String signLedgerSeal(UUID userId, String merkleRoot) {
+        if (merkleRoot == null) return null;
+        try {
+            String key = settings.getEffectiveLedgerSigningKey();
+            byte[] keyBytes = MessageDigest.getInstance("SHA-256")
+                .digest((key + ":ledger-signer-domain-v2").getBytes(StandardCharsets.UTF_8));
+            byte[] payload = (userId.toString() + ":" + merkleRoot).getBytes(StandardCharsets.UTF_8);
+            byte[] sig = hmacSha256(payload, keyBytes);
+            StringBuilder sb = new StringBuilder(sig.length * 2);
+            for (byte b : sig) {
+                sb.append(String.format("%02x", b));
+            }
+            return sb.toString();
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to generate cryptographic ledger seal signature", e);
+        }
+    }
+
+    public boolean verifyLedgerSeal(UUID userId, String merkleRoot, String sealSignature) {
+        if (merkleRoot == null || sealSignature == null || sealSignature.isBlank()) {
+            return false;
+        }
+        String expected = signLedgerSeal(userId, merkleRoot);
+        return MessageDigest.isEqual(
+            expected.getBytes(StandardCharsets.UTF_8),
+            sealSignature.getBytes(StandardCharsets.UTF_8)
+        );
+    }
+
     private static byte[] concat(byte[]... arrays) {
         int total = 0;
         for (byte[] a : arrays) total += a.length;

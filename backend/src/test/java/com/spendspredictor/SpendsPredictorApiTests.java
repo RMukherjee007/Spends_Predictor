@@ -13,6 +13,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.http.Cookie;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -466,5 +467,111 @@ class SpendsPredictorApiTests {
             .andExpect(status().isOk())
             .andReturn();
         assertThat(txnsUiRes.getResponse().getContentAsString()).contains("Transactions Ledger");
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void cryptographicLedgerTamperEvidenceAndTransitionValidation() throws Exception {
+        String token = loginMobileToken("audit_crypto_user@example.com");
+
+        // 1. Sync accounts to seed transactions
+        mvc.perform(post("/api/v1/accounts/sync-mock")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk());
+
+        // 2. Fetch initial valid audit seal
+        MvcResult insRes = mvc.perform(get("/api/v1/insights")
+                .header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andReturn();
+        Map<String, Object> ins = mapper.readValue(insRes.getResponse().getContentAsByteArray(), new TypeReference<>() {});
+        Map<String, Object> audit = (Map<String, Object>) ins.get("java_audit");
+        assertThat(audit.get("is_valid")).isEqualTo(true);
+        assertThat(String.valueOf(audit.get("audit_seal_sha256"))).hasSize(64);
+        assertThat(String.valueOf(audit.get("seal_signature"))).isNotEmpty();
+
+        // Checkpoint table has recorded audit checkpoints
+        UUID userId = jdbc.queryForObject("SELECT id FROM users WHERE email = 'audit_crypto_user@example.com'", UUID.class);
+        Integer cpCount = jdbc.queryForObject("SELECT COUNT(*) FROM ledger_checkpoints WHERE user_id = ?", Integer.class, userId.toString());
+        assertThat(cpCount).isNotNull().isGreaterThan(0);
+
+        // 3. Issue 2: Test that tampering with metadata fields (merchant_name, raw_description) invalidates the leaf hash
+        List<Map<String, Object>> userTxns = jdbc.queryForList("SELECT id, merchant_name, raw_description, amount_base_minor FROM transactions WHERE user_id = ? LIMIT 1", userId.toString());
+        assertThat(userTxns).isNotEmpty();
+        String txnId = String.valueOf(userTxns.get(0).get("id"));
+        String origMerchant = String.valueOf(userTxns.get(0).get("merchant_name"));
+        String origDesc = String.valueOf(userTxns.get(0).get("raw_description"));
+        Long origAmount = ((Number) userTxns.get(0).get("amount_base_minor")).longValue();
+
+        // Alter merchant name
+        jdbc.update("UPDATE transactions SET merchant_name = 'FRAUDULENT_SHELL_CORP' WHERE id = ?", txnId);
+        mvc.perform(get("/api/v1/insights").header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.java_audit.is_valid").value(false));
+        jdbc.update("UPDATE transactions SET merchant_name = ? WHERE id = ?", origMerchant, txnId);
+
+        // Alter raw description
+        jdbc.update("UPDATE transactions SET raw_description = 'TAMPERED DESCRIPTION' WHERE id = ?", txnId);
+        mvc.perform(get("/api/v1/insights").header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.java_audit.is_valid").value(false));
+        jdbc.update("UPDATE transactions SET raw_description = ? WHERE id = ?", origDesc, txnId);
+
+        // 4. Issue 3: Validate that mutations (category updates, CSV imports, currency switches)
+        // are REJECTED with 409 Conflict if the ledger was tampered out-of-band
+        jdbc.update("UPDATE transactions SET amount_base_minor = amount_base_minor + 77700 WHERE id = ?", txnId);
+
+        // Category override mutation is blocked
+        mvc.perform(patch("/api/v1/transactions/" + txnId + "/category")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"category\":\"groceries\"}"))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.error.code").value("ledger_integrity_violation"));
+
+        // CSV import mutation is blocked
+        mvc.perform(post("/api/v1/transactions/import-csv")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content(mapper.writeValueAsString(Map.of("csv_content", "Date,Narration,Debit,Credit,Currency\n2026-10-25,SHOP,100,,INR\n"))))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.error.code").value("ledger_integrity_violation"));
+
+        // Base currency mutation is blocked
+        mvc.perform(patch("/api/v1/users/me")
+                .header("Authorization", "Bearer " + token)
+                .contentType(MediaType.APPLICATION_JSON)
+                .content("{\"base_currency\":\"EUR\"}"))
+            .andExpect(status().isConflict())
+            .andExpect(jsonPath("$.error.code").value("ledger_integrity_violation"));
+
+        // Restore transaction to clean state
+        jdbc.update("UPDATE transactions SET amount_base_minor = ? WHERE id = ?", origAmount, txnId);
+
+        // 5. Issue 1: Direct database root overwrite attack
+        // Attacker alters a transaction AND alters users.ledger_merkle_root to match the forged root
+        String storedRoot = jdbc.queryForObject("SELECT ledger_merkle_root FROM users WHERE id = ?", String.class, userId.toString());
+        String storedSeal = jdbc.queryForObject("SELECT ledger_merkle_seal FROM users WHERE id = ?", String.class, userId.toString());
+        jdbc.update("UPDATE transactions SET amount_base_minor = amount_base_minor + 100000 WHERE id = ?", txnId);
+
+        // Attacker computes the new root and updates users.ledger_merkle_root in the database
+        // but does not possess the server-side signing key!
+        jdbc.update("UPDATE users SET ledger_merkle_root = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa' WHERE id = ?", userId.toString());
+        mvc.perform(get("/api/v1/insights").header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.java_audit.is_valid").value(false));
+
+        // Even if attacker inserts a fake signature in ledger_merkle_seal:
+        jdbc.update("UPDATE users SET ledger_merkle_seal = 'ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff' WHERE id = ?", userId.toString());
+        mvc.perform(get("/api/v1/insights").header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.java_audit.is_valid").value(false));
+
+        // Restore clean state
+        jdbc.update("UPDATE transactions SET amount_base_minor = ? WHERE id = ?", origAmount, txnId);
+        jdbc.update("UPDATE users SET ledger_merkle_root = ?, ledger_merkle_seal = ? WHERE id = ?", storedRoot, storedSeal, userId.toString());
+        mvc.perform(get("/api/v1/insights").header("Authorization", "Bearer " + token))
+            .andExpect(status().isOk())
+            .andExpect(jsonPath("$.java_audit.is_valid").value(true));
     }
 }

@@ -83,6 +83,7 @@ public class FinanceService {
                 timezone VARCHAR(64) NOT NULL,
                 locale VARCHAR(16) NOT NULL,
                 ledger_merkle_root VARCHAR(64),
+                ledger_merkle_seal VARCHAR(128),
                 is_active BOOLEAN NOT NULL DEFAULT TRUE,
                 is_admin BOOLEAN NOT NULL DEFAULT FALSE,
                 last_login_at VARCHAR(64),
@@ -176,6 +177,24 @@ public class FinanceService {
             "CREATE INDEX IF NOT EXISTS idx_refresh_family ON refresh_tokens(family_id)",
             "CREATE INDEX IF NOT EXISTS idx_rate_limit_bucket_ts ON rate_limit_events(bucket_key, ts_ms)"
         ));
+
+        applyMigration("V3__ledger_signature_and_checkpoints", List.of(
+            "ALTER TABLE users ADD COLUMN IF NOT EXISTS ledger_merkle_seal VARCHAR(128)",
+            """
+            CREATE TABLE IF NOT EXISTS ledger_checkpoints (
+                id VARCHAR(36) PRIMARY KEY,
+                user_id VARCHAR(36) NOT NULL,
+                sequence_number BIGINT NOT NULL,
+                prev_merkle_root VARCHAR(64),
+                merkle_root VARCHAR(64) NOT NULL,
+                signature VARCHAR(128) NOT NULL,
+                tx_count INT NOT NULL,
+                reason VARCHAR(64) NOT NULL,
+                created_at VARCHAR(64) NOT NULL
+            )
+            """,
+            "CREATE INDEX IF NOT EXISTS idx_ledger_checkpoints_user_seq ON ledger_checkpoints(user_id, sequence_number)"
+        ));
     }
 
     private void applyMigration(String version, List<String> statements) {
@@ -231,8 +250,8 @@ public class FinanceService {
             String pwdHash = security.hashPassword(passwordToUse);
             jdbc.update(
                 """
-                INSERT INTO users (id, email, password_hash, full_name, avatar_url, google_sub, base_currency, timezone, locale, ledger_merkle_root, is_active, is_admin, last_login_at, created_at)
-                VALUES (?, ?, ?, ?, NULL, NULL, ?, 'Asia/Kolkata', 'en-IN', NULL, TRUE, FALSE, ?, ?)
+                INSERT INTO users (id, email, password_hash, full_name, avatar_url, google_sub, base_currency, timezone, locale, ledger_merkle_root, ledger_merkle_seal, is_active, is_admin, last_login_at, created_at)
+                VALUES (?, ?, ?, ?, NULL, NULL, ?, 'Asia/Kolkata', 'en-IN', NULL, NULL, TRUE, FALSE, ?, ?)
                 """,
                 id.toString(), normEmail, pwdHash,
                 (fullName != null && !fullName.isBlank()) ? fullName.trim() : null,
@@ -338,6 +357,7 @@ public class FinanceService {
         );
 
         if (!baseCurrency.equals(current.baseCurrency())) {
+            validatePreMutationLedger(userId);
             List<Map<String, Object>> txns = jdbc.queryForList(
                 "SELECT id, amount_minor, currency FROM transactions WHERE user_id = ?",
                 userId.toString()
@@ -352,7 +372,7 @@ public class FinanceService {
                     conv.amountBaseMinor(), conv.fxRate(), tid
                 );
             }
-            recomputeAndStoreLedgerSeal(userId);
+            commitLedgerStateTransition(userId, "BASE_CURRENCY_CONVERSION");
         }
 
         return getUserById(userId);
@@ -468,6 +488,7 @@ public class FinanceService {
     @Transactional
     @SuppressWarnings("unchecked")
     public List<BankAccountRead> syncMockBankData(UserRead user) {
+        validatePreMutationLedger(user.id());
         Map<String, Object> req = Map.of(
             "base_currency", user.baseCurrency(),
             "user_rules", getUserRulesMap(user.id())
@@ -524,7 +545,7 @@ public class FinanceService {
             insertTransactionRow(user.id(), acctId, t, now);
         }
 
-        recomputeAndStoreLedgerSeal(user.id());
+        commitLedgerStateTransition(user.id(), "MOCK_SYNC");
         return listAccounts(user);
     }
 
@@ -551,6 +572,7 @@ public class FinanceService {
         if (newCategory == null || !ApiModels.VALID_CATEGORIES.contains(newCategory)) {
             throw new AppException(422, "validation_error", "Invalid transaction category");
         }
+        validatePreMutationLedger(user.id());
         List<TransactionRead> rows = jdbc.query(
             "SELECT * FROM transactions WHERE id = ? AND user_id = ?",
             (rs, i) -> mapTransaction(rs),
@@ -588,7 +610,7 @@ public class FinanceService {
             );
         }
 
-        recomputeAndStoreLedgerSeal(user.id());
+        commitLedgerStateTransition(user.id(), "CATEGORY_OVERRIDE");
         return jdbc.query(
             "SELECT * FROM transactions WHERE id = ?",
             (rs, i) -> mapTransaction(rs),
@@ -602,6 +624,7 @@ public class FinanceService {
         if (csvContent == null || csvContent.isBlank() || csvContent.length() > 25_000) {
             throw new AppException(422, "validation_error", "CSV content must be between 1 and 25000 characters");
         }
+        validatePreMutationLedger(user.id());
         String now = Instant.now().toString();
         UUID targetAccountId;
         String acctCurrency;
@@ -682,7 +705,7 @@ public class FinanceService {
                 );
             }
             annotateUserTransactions(user);
-            recomputeAndStoreLedgerSeal(user.id());
+            commitLedgerStateTransition(user.id(), "CSV_IMPORT");
         }
         return new CsvImportResponse(imported, skipped);
     }
@@ -721,26 +744,109 @@ public class FinanceService {
         for (Map<String, Object> t : dbTxns) {
             TransactionRecord r = new TransactionRecord();
             r.id = String.valueOf(t.get("id"));
+            r.accountId = t.get("account_id") != null ? String.valueOf(t.get("account_id")) : "";
             r.occurredAt = String.valueOf(t.get("occurred_at"));
             r.direction = String.valueOf(t.get("direction"));
             r.amountMinor = ((Number) t.get("amount_minor")).longValue();
             r.currency = String.valueOf(t.get("currency"));
             r.amountBaseMinor = ((Number) t.get("amount_base_minor")).longValue();
             r.fxRate = ((Number) t.get("fx_rate")).doubleValue();
-            r.category = String.valueOf(t.get("category"));
+            r.rawDescription = t.get("raw_description") != null ? String.valueOf(t.get("raw_description")) : "";
+            r.merchantName = t.get("merchant_name") != null ? String.valueOf(t.get("merchant_name")) : "";
+            r.category = t.get("category") != null ? String.valueOf(t.get("category")) : "";
+            r.categorySource = t.get("category_source") != null ? String.valueOf(t.get("category_source")) : "";
+            r.categoryConfidence = t.get("category_confidence") != null ? ((Number) t.get("category_confidence")).doubleValue() : 0.0;
+            r.isRecurring = Boolean.TRUE.equals(t.get("is_recurring"));
+            r.isAnomaly = Boolean.TRUE.equals(t.get("is_anomaly"));
+            r.anomalyScore = t.get("anomaly_score") != null ? ((Number) t.get("anomaly_score")).doubleValue() : 0.0;
+            r.anomalyReason = t.get("anomaly_reason") != null ? String.valueOf(t.get("anomaly_reason")) : "";
+            r.externalId = t.get("external_id") != null ? String.valueOf(t.get("external_id")) : "";
             records.add(r);
         }
         return records;
     }
 
-    public void recomputeAndStoreLedgerSeal(UUID userId) {
-        List<Map<String, Object>> dbTxns = getUserTransactionsAsMaps(userId);
-        VerificationResult audit = LedgerSecurityVerifier.verifyLedger(toVerifierRecords(dbTxns));
-        jdbc.update(
-            "UPDATE users SET ledger_merkle_root = ? WHERE id = ?",
-            audit.auditSealSha256,
+    public void validatePreMutationLedger(UUID userId) {
+        List<Map<String, Object>> userSealRows = jdbc.queryForList(
+            "SELECT ledger_merkle_root, ledger_merkle_seal FROM users WHERE id = ?",
             userId.toString()
         );
+        if (userSealRows.isEmpty()) return;
+        Map<String, Object> r = userSealRows.get(0);
+        String storedRoot = (String) r.get("ledger_merkle_root");
+        String storedSeal = (String) r.get("ledger_merkle_seal");
+        if (storedRoot == null || storedRoot.isBlank()) {
+            return;
+        }
+
+        // 1. Verify cryptographic seal signature using protected server signing key
+        if (!security.verifyLedgerSeal(userId, storedRoot, storedSeal)) {
+            log.error("TAMPER DETECTED: Stored ledger seal signature is invalid for user {}! Aborting mutation to prevent tampering laundering.", userId);
+            throw new AppException(409, "ledger_integrity_violation",
+                "Tamper detected: stored ledger seal failed cryptographic signature verification. Database records may have been tampered out-of-band.");
+        }
+
+        // 2. Verify current transactions against stored root
+        List<Map<String, Object>> dbTxns = getUserTransactionsAsMaps(userId);
+        VerificationResult currentAudit = LedgerSecurityVerifier.verifyLedger(toVerifierRecords(dbTxns));
+        if (!currentAudit.isValid || !storedRoot.equals(currentAudit.auditSealSha256)) {
+            log.error("TAMPER DETECTED: Pre-mutation transactions mismatch trusted seal for user {}! Expected {}, computed {}. Aborting mutation.",
+                userId, storedRoot, currentAudit.auditSealSha256);
+            throw new AppException(409, "ledger_integrity_violation",
+                "Tamper detected: existing ledger records do not match the trusted Merkle root. Mutation rejected to preserve audit integrity.");
+        }
+    }
+
+    public void commitLedgerStateTransition(UUID userId, String reason) {
+        List<Map<String, Object>> dbTxns = getUserTransactionsAsMaps(userId);
+        VerificationResult audit = LedgerSecurityVerifier.verifyLedger(toVerifierRecords(dbTxns));
+        if (!audit.isValid) {
+            log.error("POST-MUTATION LEDGER INTEGRITY CHECK FAILED for user {} during {}", userId, reason);
+            throw new AppException(500, "ledger_verification_failed", "Ledger verification failed after " + reason);
+        }
+
+        List<Map<String, Object>> userRows = jdbc.queryForList(
+            "SELECT ledger_merkle_root FROM users WHERE id = ?",
+            userId.toString()
+        );
+        String prevRoot = (!userRows.isEmpty()) ? (String) userRows.get(0).get("ledger_merkle_root") : null;
+        String newRoot = audit.auditSealSha256;
+        String newSeal = security.signLedgerSeal(userId, newRoot);
+
+        Long maxSeq = jdbc.queryForObject(
+            "SELECT COALESCE(MAX(sequence_number), 0) FROM ledger_checkpoints WHERE user_id = ?",
+            Long.class,
+            userId.toString()
+        );
+        long nextSeq = (maxSeq != null ? maxSeq : 0L) + 1L;
+
+        jdbc.update(
+            """
+            INSERT INTO ledger_checkpoints (id, user_id, sequence_number, prev_merkle_root, merkle_root, signature, tx_count, reason, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            UUID.randomUUID().toString(),
+            userId.toString(),
+            nextSeq,
+            prevRoot,
+            newRoot,
+            newSeal,
+            dbTxns.size(),
+            reason,
+            Instant.now().toString()
+        );
+
+        jdbc.update(
+            "UPDATE users SET ledger_merkle_root = ?, ledger_merkle_seal = ? WHERE id = ?",
+            newRoot,
+            newSeal,
+            userId.toString()
+        );
+    }
+
+    public void recomputeAndStoreLedgerSeal(UUID userId) {
+        validatePreMutationLedger(userId);
+        commitLedgerStateTransition(userId, "RECOMPUTE_SEAL");
     }
 
     public Map<String, Object> getUserMlInsights(UserRead user) {
@@ -771,21 +877,52 @@ public class FinanceService {
         report.put("runway", javaRunway);
 
         VerificationResult audit = LedgerSecurityVerifier.verifyLedger(toVerifierRecords(dbTxns));
-        List<String> storedRoots = jdbc.queryForList(
-            "SELECT ledger_merkle_root FROM users WHERE id = ?",
-            String.class,
+        List<Map<String, Object>> userSealRows = jdbc.queryForList(
+            "SELECT ledger_merkle_root, ledger_merkle_seal FROM users WHERE id = ?",
             user.id().toString()
         );
-        String storedRoot = (!storedRoots.isEmpty()) ? storedRoots.get(0) : null;
+        String storedRoot = null;
+        String storedSeal = null;
+        if (!userSealRows.isEmpty()) {
+            Map<String, Object> r = userSealRows.get(0);
+            storedRoot = (String) r.get("ledger_merkle_root");
+            storedSeal = (String) r.get("ledger_merkle_seal");
+        }
+
         if (storedRoot == null && !dbTxns.isEmpty()) {
-            jdbc.update(
-                "UPDATE users SET ledger_merkle_root = ? WHERE id = ?",
-                audit.auditSealSha256,
+            commitLedgerStateTransition(user.id(), "INIT");
+            storedRoot = audit.auditSealSha256;
+            storedSeal = security.signLedgerSeal(user.id(), storedRoot);
+        } else if (storedRoot != null) {
+            // 1. Verify cryptographic seal signature using protected server signing key
+            boolean authenticSeal = security.verifyLedgerSeal(user.id(), storedRoot, storedSeal);
+            if (!authenticSeal) {
+                log.warn("Tamper detection alert for user {}: cryptographic signature on stored ledger root is INVALID! Possible direct database manipulation.", user.id());
+                audit.isValid = false;
+            }
+
+            // 2. Verify root matches computed Merkle tree
+            if (!storedRoot.equals(audit.auditSealSha256)) {
+                log.warn("Tamper detection alert for user {}: expected Merkle root {} but computed {}", user.id(), storedRoot, audit.auditSealSha256);
+                audit.isValid = false;
+            }
+
+            // 3. Verify checkpoint log consistency
+            List<Map<String, Object>> latestCheckpoint = jdbc.queryForList(
+                "SELECT merkle_root, signature FROM ledger_checkpoints WHERE user_id = ? ORDER BY sequence_number DESC LIMIT 1",
                 user.id().toString()
             );
-        } else if (storedRoot != null && !storedRoot.equals(audit.auditSealSha256)) {
-            log.warn("Tamper detection alert for user {}: expected Merkle root {} but computed {}", user.id(), storedRoot, audit.auditSealSha256);
-            audit.isValid = false;
+            if (!latestCheckpoint.isEmpty()) {
+                String cpRoot = (String) latestCheckpoint.get(0).get("merkle_root");
+                String cpSig = (String) latestCheckpoint.get(0).get("signature");
+                if (!storedRoot.equals(cpRoot) || !security.verifyLedgerSeal(user.id(), cpRoot, cpSig)) {
+                    log.warn("Tamper detection alert for user {}: ledger checkpoint log mismatch or invalid checkpoint signature", user.id());
+                    audit.isValid = false;
+                }
+            }
+        }
+        if (storedSeal != null) {
+            audit.sealSignature = storedSeal;
         }
         report.put("java_audit", audit.toMap());
         return report;
@@ -793,20 +930,28 @@ public class FinanceService {
 
     private List<Map<String, Object>> getUserTransactionsAsMaps(UUID userId) {
         return jdbc.query(
-            "SELECT * FROM transactions WHERE user_id = ? ORDER BY occurred_at ASC",
+            "SELECT * FROM transactions WHERE user_id = ? ORDER BY occurred_at ASC, id ASC",
             (rs, i) -> {
                 Map<String, Object> m = new LinkedHashMap<>();
                 m.put("id", rs.getString("id"));
+                m.put("account_id", rs.getString("account_id"));
                 m.put("occurred_at", rs.getString("occurred_at"));
                 m.put("direction", rs.getString("direction"));
                 m.put("amount_minor", rs.getLong("amount_minor"));
                 m.put("currency", rs.getString("currency"));
                 m.put("amount_base_minor", rs.getLong("amount_base_minor"));
                 m.put("fx_rate", rs.getDouble("fx_rate"));
+                m.put("raw_description", rs.getString("raw_description"));
                 m.put("merchant_name", rs.getString("merchant_name"));
                 m.put("category", rs.getString("category"));
                 m.put("category_source", rs.getString("category_source"));
                 m.put("category_confidence", rs.getDouble("category_confidence"));
+                m.put("is_recurring", rs.getBoolean("is_recurring"));
+                m.put("is_anomaly", rs.getBoolean("is_anomaly"));
+                m.put("anomaly_score", rs.getDouble("anomaly_score"));
+                m.put("anomaly_reason", rs.getString("anomaly_reason"));
+                m.put("external_id", rs.getString("external_id"));
+                m.put("created_at", rs.getString("created_at"));
                 return m;
             },
             userId.toString()
