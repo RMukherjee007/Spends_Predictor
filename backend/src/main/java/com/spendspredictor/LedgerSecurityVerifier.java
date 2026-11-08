@@ -113,7 +113,7 @@ public class LedgerSecurityVerifier {
                 res.isValid = false;
             }
 
-            String canonicalRow = t.id + "|" + t.occurredAt + "|" + t.direction + "|" + t.amountBaseMinor + "|" + t.currency + "|" + t.category;
+            String canonicalRow = t.id + "|" + t.occurredAt + "|" + t.direction + "|" + t.amountMinor + "|" + t.amountBaseMinor + "|" + t.fxRate + "|" + t.currency + "|" + t.category;
             byte[] rowBytes = canonicalRow.getBytes(StandardCharsets.UTF_8);
 
             // RFC 6962 domain-separated Merkle leaf: SHA-256(0x00 || canonicalRow)

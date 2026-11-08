@@ -46,10 +46,10 @@ public class SpendsPredictorApplication {
         @Value("${app.refresh-token-ttl-days:30}")
         public int refreshTokenTtlDays;
 
-        @Value("${app.dev-login-enabled:true}")
+        @Value("${app.dev-login-enabled:false}")
         public boolean devLoginEnabled;
 
-        @Value("${app.cookie-secure:false}")
+        @Value("${app.cookie-secure:true}")
         public boolean cookieSecure;
 
         @Value("${app.cors-origins:http://localhost:5173}")
